@@ -4,10 +4,12 @@ import retrofit2.converter.gson.GsonConverterFactory;
 import okhttp3.OkHttpClient;
 import okhttp3.logging.HttpLoggingInterceptor;
 
+// Retrofit 클라이언트를 생성하는 클래스
 public class RetrofitClient {
     private static final String BASE_URL = "http://192.168.0.22:5000"; // Flask 서버 IP 또는 도메인
     private static Retrofit retrofit = null;
 
+    // API 서비스 인스턴스를 반환하는 함수
     public static ApiService getApiService() {
         if (retrofit == null) {
             // 로깅 인터셉터 설정

@@ -9,6 +9,7 @@ import android.widget.TextView;
 
 import com.readkakaotalk.app.R;
 
+// 서버 응답 결과를 표시하는 액티비티
 public class ResultActivity extends AppCompatActivity {
 
     @Override
@@ -22,6 +23,8 @@ public class ResultActivity extends AppCompatActivity {
         // 결과를 TextView에 표시
         TextView resultTextView = findViewById(R.id.textViewResult);
         resultTextView.setText(serverResponse != null ? serverResponse : "No response received");
+
+        // 메인 화면으로 돌아가는 버튼 설정
         Button buttonBackToMain = findViewById(R.id.buttonBackToMain);
         buttonBackToMain.setOnClickListener(v -> {
             Intent intent = new Intent(ResultActivity.this, MainActivity.class);

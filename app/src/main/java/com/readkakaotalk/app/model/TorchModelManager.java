@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
+// PyTorch 모델을 관리하는 클래스
 public class TorchModelManager {
     private static final String TAG = "TorchModelManager";
     private static final String MODEL_NAME = "kobert_v1.pt";
@@ -28,6 +29,7 @@ public class TorchModelManager {
         }
     }
 
+    // 사기 탐지 함수
     public String detectFraud(String message) {
         try {
             // 메시지를 모델 입력 형식으로 변환
@@ -47,20 +49,20 @@ public class TorchModelManager {
         }
     }
 
+    // 감정 분류 함수 (구현 필요)
     public String classifyEmotion(String message) {
         // TODO: 감정 분류 모델 실행 로직 구현
-        // 예: 모델 실행 후 여섯 개의 감정 중 하나 반환
-        // 아래는 예시로, 실제 모델 로직에 맞게 구현해야 합니다.
         String emotion = "?";
         return "Emotion: " + emotion;
     }
 
+    // 텍스트를 토큰 ID 배열로 변환하는 함수
     private long[] tokenize(String text) {
         // TODO: 토크나이저를 사용하여 텍스트를 토큰 ID 배열로 변환
-        // 이 부분은 Python에서 사용한 토크나이저와 동일한 로직을 구현해야 합니다
         return new long[]{};
     }
 
+    // ?
     private String assetFilePath(Context context, String assetName) throws IOException {
         File file = new File(context.getFilesDir(), assetName);
         if (file.exists() && file.length() > 0) {

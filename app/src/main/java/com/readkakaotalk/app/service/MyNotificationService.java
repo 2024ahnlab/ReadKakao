@@ -15,6 +15,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Objects;
 
+// 알림을 수신하고 처리하는 서비스
 public class MyNotificationService extends NotificationListenerService {
     private static final String TAG = "NotificationService";
 
@@ -42,9 +43,9 @@ public class MyNotificationService extends NotificationListenerService {
 
         // 알림 정보 가져오기
         final Bundle extras = sbn.getNotification().extras;
-        String       name   = extras.getString(Notification.EXTRA_TITLE);
-        CharSequence text   = extras.getCharSequence(Notification.EXTRA_TEXT);
-        CharSequence room   = extras.getCharSequence(Notification.EXTRA_SUB_TEXT);
+        String name = extras.getString(Notification.EXTRA_TITLE);
+        CharSequence text = extras.getCharSequence(Notification.EXTRA_TEXT);
+        CharSequence room = extras.getCharSequence(Notification.EXTRA_SUB_TEXT);
         if (name == null || text == null) return;
         if (room == null) room = "(개인 채팅)"; // room은 그룹/오픈채팅만 있음
 
@@ -67,6 +68,7 @@ public class MyNotificationService extends NotificationListenerService {
 
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn) {
+        // 알림이 제거되었을 때의 처리
         // Toast.makeText(this, "알림 제거됨", Toast.LENGTH_SHORT).show();
     }
 }

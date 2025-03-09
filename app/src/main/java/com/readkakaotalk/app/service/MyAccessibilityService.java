@@ -16,6 +16,7 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import java.util.Objects;
 
+// 접근성 이벤트를 처리하는 서비스
 public class MyAccessibilityService extends AccessibilityService {
     private static final String TAG = "AccessibilityService";
     public static final String ACTION_NOTIFICATION_BROADCAST = "MyAccessibilityService_LocalBroadcast";
@@ -169,7 +170,6 @@ public class MyAccessibilityService extends AccessibilityService {
 
     // 여기에 isChildButton, isChildTextView 등의 헬퍼 메서드를 추가합니다.
 
-
     private boolean checkChildClass(final AccessibilityNodeInfo node, final int index, final String className) {
         final AccessibilityNodeInfo child = node.getChild(index);
         if (child == null) return false;
@@ -212,13 +212,13 @@ public class MyAccessibilityService extends AccessibilityService {
         return rect.left >= 200;
     }
 
-
     public void onServiceConnected() {
-//        AccessibilityServiceInfo info = new AccessibilityServiceInfo();
-//        info.eventTypes = AccessibilityEvent.TYPES_ALL_MASK;
-//        info.feedbackType = AccessibilityServiceInfo.DEFAULT | AccessibilityServiceInfo.FEEDBACK_VISUAL;
-//        info.notificationTimeout = 500;
-//        setServiceInfo(info);
+        // 서비스가 연결되었을 때의 설정
+        // AccessibilityServiceInfo info = new AccessibilityServiceInfo();
+        // info.eventTypes = AccessibilityEvent.TYPES_ALL_MASK;
+        // info.feedbackType = AccessibilityServiceInfo.DEFAULT | AccessibilityServiceInfo.FEEDBACK_VISUAL;
+        // info.notificationTimeout = 500;
+        // setServiceInfo(info);
     }
 
     @Override
@@ -240,7 +240,6 @@ public class MyAccessibilityService extends AccessibilityService {
         for (int i = 0; i < nodeInfo.getChildCount(); i++) {
             printAllViews(nodeInfo.getChild(i), depth + 1);
         }
-
     }
 
     private String getAllText(AccessibilityNodeInfo node, int depth) {
