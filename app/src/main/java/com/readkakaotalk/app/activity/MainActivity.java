@@ -17,6 +17,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
@@ -251,12 +252,20 @@ public class MainActivity extends AppCompatActivity {
         // 알림 구성 및 표시
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "fraud_alert")
                 .setSmallIcon(R.drawable.ic_warning)
-                .setContentTitle("사기 의심 메시지 감지")
-                .setContentText(message)
+                .setContentTitle("이 대화는 피싱일 가능성이 있습니다")
+//                .setContentTitle("현재 감정 상태가 매우 불안정합니다")
+//                .setContentTitle("지금 이 대화는 매우 위험합니다")
+//                .setContentText(message) // 대화 내용
+                .setContentText("개인정보를 절대 입력하지 마세요")
+//                .setContentText("지금 결정을 내리는 건 위험할 수 있습니다")
+//                .setContentText("즉시 대화를 중단하세요")
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)
-                .setContentIntent(pendingIntent);
-
+                .setContentIntent(pendingIntent)
+                .setColorized(true)  // 색상 강조
+                .setColor(0xFFFFFF00);
+//                .setColor(0xFFFFA500);
+//                .setColor(Color.RED);
         Log.d(TAG, "알림 표시됨: " + message);
 
         manager.notify(1, builder.build());
