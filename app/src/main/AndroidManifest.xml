@@ -24,10 +24,6 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".activity.ResultActivity"
-            android:exported="true"/>
-
         <service
             android:name=".service.MyAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
