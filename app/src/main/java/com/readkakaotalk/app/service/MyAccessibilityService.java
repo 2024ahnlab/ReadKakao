@@ -20,7 +20,18 @@ public class MyAccessibilityService extends AccessibilityService {
     public static final String ACTION_NOTIFICATION_BROADCAST = "MyAccessibilityService_LocalBroadcast";
     public static final String EXTRA_TEXT = "extra_text";
     public static final String TARGET_APP_PACKAGE = "com.kakao.talk";
+    private static final java.util.Queue<String> recentMessages = new java.util.LinkedList<>();
+    public static java.util.List<String> getRecentMessages(int count) {
+        return new java.util.ArrayList<>(recentMessages);
+    }
 
+    // 그리고 메시지 처리할 때 recentMessages에 추가
+    private void addMessageToRecent(String message) {
+        if (recentMessages.size() >= 5) {
+            recentMessages.poll();
+        }
+        recentMessages.offer(message);
+    }
     /**
      * 접근성 이벤트 발생 시 호출됨
      */
@@ -137,6 +148,7 @@ public class MyAccessibilityService extends AccessibilityService {
         String result = message.toString();
         if (!result.isEmpty()) {
             Log.e(TAG, result);
+            addMessageToRecent(result);
             Intent intent = new Intent(MyAccessibilityService.ACTION_NOTIFICATION_BROADCAST);
             intent.putExtra(MyAccessibilityService.EXTRA_TEXT, result);
             getApplicationContext().sendBroadcast(intent); // ✅ 명확한 context와 상수 사용

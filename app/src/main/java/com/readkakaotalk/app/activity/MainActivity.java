@@ -32,13 +32,17 @@ import org.json.JSONObject;
 import java.util.List;
 import java.util.Set;
 
+import android.content.SharedPreferences;
+import android.content.Intent;
+import android.app.AlertDialog;
+
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
-//    private TorchModelManager model1, model2;
-    private float model1Weight = 0.5f, model2Weight = 0.5f;
+//    private TorchModelManager fraud_model, emotion_model;
+    private float fraud_model_Weight = 0.5f, emotion_model_Weight = 0.5f;
     private AlertDialog dialog = null;
     private SeekBar weightSeekBar;
-    private TextView ratioText;
+    private TextView ratioText, emotionTextView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,21 +51,27 @@ public class MainActivity extends AppCompatActivity {
         Log.d(TAG, "MainActivity 시작됨");
 
 //        // 모델 로딩
-//        model1 = new TorchModelManager("model1.pt");
-//        model2 = new TorchModelManager("model2.pt");
-//        model1.loadModel(this);
-//        model2.loadModel(this);
+//        fraud_model = new TorchModelManager("fraud_model.pt");
+//        emotion_model = new TorchModelManager("emotion_model.pt");
+//        fraud_model.loadModel(this);
+//        emotion_model.loadModel(this);
 
         weightSeekBar = findViewById(R.id.weightSeekBar);
         ratioText = findViewById(R.id.weightTextView);
+        emotionTextView = findViewById(R.id.emotionTextView); // 새 감정 텍스트뷰
+
+        findViewById(R.id.settingsButton).setOnClickListener(v -> {
+            Intent intent = new Intent(this, SettingsActivity.class);
+            startActivity(intent);
+        });
 
         weightSeekBar.setProgress(50);
         weightSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                model1Weight = progress / 100f;
-                model2Weight = 1f - model1Weight;
-                ratioText.setText("모델1: " + model1Weight + " / 모델2: " + model2Weight);
+                fraud_model_Weight = progress / 100f;
+                emotion_model_Weight = 1f - fraud_model_Weight;
+                ratioText.setText("모델1: " + fraud_model_Weight + " / 모델2: " + emotion_model_Weight);
             }
 
             @Override
@@ -87,6 +97,22 @@ public class MainActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(this,
                     new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 100);
         }
+
+        // 알림 클릭 진입 처리 (감정, 사기 결과 표시용)
+        Intent intent = getIntent();
+        if (intent != null && intent.hasExtra("alert_type")) {
+            String type = intent.getStringExtra("alert_type");
+            if ("fraud".equals(type)) {
+                showRecentMessages(5);
+            } else if ("emotion".equals(type)) {
+                String emotion = intent.getStringExtra("emotion_level");
+                emotionTextView.setText("감정 상태: " + emotion);
+            } else if ("fraud_emotion".equals(type)) {
+                showRecentMessages(5);
+                String emotion = intent.getStringExtra("emotion_level");
+                emotionTextView.setText("감정 상태: " + emotion);
+            }
+        }
     }
 
     private void analyze(String message) {
@@ -101,11 +127,11 @@ public class MainActivity extends AppCompatActivity {
         }
 
 //        float[] v = convertTextToVector(message);
-//        float[] r1 = model1.predict(v);
-//        float[] r2 = model2.predict(v);
+//        float[] r1 = fraud_model.predict(v);
+//        float[] r2 = emotion_model.predict(v);
 //
-//        float labelScore = model1Weight * r1[0] + model2Weight * r2[0];
-//        float confidence = model1Weight * r1[1] + model2Weight * r2[1];
+//        float labelScore = fraud_model_Weight * r1[0] + emotion_model_Weight * r2[0];
+//        float confidence = fraud_model_Weight * r1[1] + emotion_model_Weight * r2[1];
 //
 //        String label = labelScore > 0.5 ? "사기" : "정상";
 //
@@ -133,8 +159,13 @@ public class MainActivity extends AppCompatActivity {
             manager.createNotificationChannel(channel);
         }
 
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0,
-                new Intent(), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        // 알림 클릭 시 MainActivity로 이동하도록 intent 설정
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.putExtra("alert_type", "fraud"); // 또는 emotion, fraud_emotion
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+                this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "fraud_alert")
                 .setSmallIcon(R.drawable.ic_warning)
@@ -150,6 +181,15 @@ public class MainActivity extends AppCompatActivity {
                 .setContentIntent(pendingIntent);
 
         manager.notify(1, builder.build());
+    }
+
+    private void showRecentMessages(int count) {
+        List<String> messages = MyAccessibilityService.getRecentMessages(count);
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("최근 메시지");
+        builder.setMessage(String.join("\n", messages));
+        builder.setPositiveButton("확인", null);
+        builder.show();
     }
 
     @Override
