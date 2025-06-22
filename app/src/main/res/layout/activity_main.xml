@@ -20,6 +20,32 @@
         android:textSize="16sp"
         android:layout_marginTop="12dp"/>
 
+    <TextView
+        android:id="@+id/fraudMessageTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="사기 의심 메시지:"
+        android:textSize="16sp"
+        android:layout_marginTop="16dp" />
+
+    <ScrollView
+        android:id="@+id/fraudScrollContainer"
+        android:layout_width="match_parent"
+        android:layout_height="120dp"
+        android:background="#EEEEEE"
+        android:padding="8dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="16dp">
+
+        <TextView
+            android:id="@+id/fraudMessageTextView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="없음"
+            android:textSize="14sp"
+            android:lineSpacingExtra="4dp"/>
+    </ScrollView>
+
     <SeekBar
         android:id="@+id/weightSeekBar"
         android:layout_width="match_parent"

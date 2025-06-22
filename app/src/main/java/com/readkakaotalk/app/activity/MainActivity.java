@@ -43,6 +43,7 @@ public class MainActivity extends AppCompatActivity {
     private AlertDialog dialog = null;
     private SeekBar weightSeekBar;
     private TextView ratioText, emotionTextView;
+    private TextView fraudMessageTextView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,6 +65,8 @@ public class MainActivity extends AppCompatActivity {
             Intent intent = new Intent(this, SettingsActivity.class);
             startActivity(intent);
         });
+
+        fraudMessageTextView = findViewById(R.id.fraudMessageTextView);
 
         weightSeekBar.setProgress(50);
         weightSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -185,11 +188,8 @@ public class MainActivity extends AppCompatActivity {
 
     private void showRecentMessages(int count) {
         List<String> messages = MyAccessibilityService.getRecentMessages(count);
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("최근 메시지");
-        builder.setMessage(String.join("\n", messages));
-        builder.setPositiveButton("확인", null);
-        builder.show();
+        String combined = String.join("\n", messages);
+        fraudMessageTextView.setText(combined.isEmpty() ? "없음" : combined);
     }
 
     @Override
