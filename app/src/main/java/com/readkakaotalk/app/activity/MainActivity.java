@@ -39,10 +39,8 @@ import android.app.AlertDialog;
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
 //    private TorchModelManager fraud_model, emotion_model;
-    private float fraud_model_Weight = 0.5f, emotion_model_Weight = 0.5f;
     private AlertDialog dialog = null;
-    private SeekBar weightSeekBar;
-    private TextView ratioText, emotionTextView;
+    private TextView emotionTextView;
     private TextView fraudMessageTextView;
 
     @Override
@@ -57,31 +55,12 @@ public class MainActivity extends AppCompatActivity {
 //        fraud_model.loadModel(this);
 //        emotion_model.loadModel(this);
 
-        weightSeekBar = findViewById(R.id.weightSeekBar);
-        ratioText = findViewById(R.id.weightTextView);
         emotionTextView = findViewById(R.id.emotionTextView); // 새 감정 텍스트뷰
+        fraudMessageTextView = findViewById(R.id.fraudMessageTextView);
 
         findViewById(R.id.settingsButton).setOnClickListener(v -> {
             Intent intent = new Intent(this, SettingsActivity.class);
             startActivity(intent);
-        });
-
-        fraudMessageTextView = findViewById(R.id.fraudMessageTextView);
-
-        weightSeekBar.setProgress(50);
-        weightSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                fraud_model_Weight = progress / 100f;
-                emotion_model_Weight = 1f - fraud_model_Weight;
-                ratioText.setText("모델1: " + fraud_model_Weight + " / 모델2: " + emotion_model_Weight);
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {}
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
         // 접근성 서비스로부터 메시지 수신
