@@ -12,58 +12,56 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.util.Log;
+import android.view.View;
 import android.view.accessibility.AccessibilityManager;
-import android.widget.SeekBar;
+import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Button;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
-import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 
 import com.readkakaotalk.app.R;
-//import com.readkakaotalk.app.model.TorchModelManager;
 import com.readkakaotalk.app.service.MyAccessibilityService;
 
 import org.json.JSONObject;
 
 import java.util.List;
-import java.util.Set;
-
-import android.content.SharedPreferences;
-import android.content.Intent;
-import android.app.AlertDialog;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
-//    private TorchModelManager fraud_model, emotion_model;
+
     private AlertDialog dialog = null;
-    private TextView emotionTextView;
-    private TextView fraudMessageTextView;
+
+    private TextView statusText;
+    private TextView fraudMessageText;
+    private LinearLayout emotionContainer;
+    private TextView emotionAngerPercent;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (getSupportActionBar() != null) getSupportActionBar().hide();
         setContentView(R.layout.activity_main);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            getWindow().setStatusBarColor(Color.parseColor("#E8E8E8")); // 원하는 색상 코드
+        }
         Log.d(TAG, "MainActivity 시작됨");
 
-//        // 모델 로딩
-//        fraud_model = new TorchModelManager("fraud_model.pt");
-//        emotion_model = new TorchModelManager("emotion_model.pt");
-//        fraud_model.loadModel(this);
-//        emotion_model.loadModel(this);
+        statusText = findViewById(R.id.statusText);
+        fraudMessageText = findViewById(R.id.fraudMessageText);
+        emotionContainer = findViewById(R.id.emotionContainer);
+        emotionAngerPercent = findViewById(R.id.emotionAngerPercent);
 
-        emotionTextView = findViewById(R.id.emotionTextView); // 새 감정 텍스트뷰
-        fraudMessageTextView = findViewById(R.id.fraudMessageTextView);
-
-        findViewById(R.id.settingsButton).setOnClickListener(v -> {
+        Button settingsButton = findViewById(R.id.settingsButton);
+        settingsButton.setOnClickListener(v -> {
             Intent intent = new Intent(this, SettingsActivity.class);
             startActivity(intent);
         });
 
-        // 접근성 서비스로부터 메시지 수신
         registerReceiver(new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
@@ -72,7 +70,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }, new IntentFilter(MyAccessibilityService.ACTION_NOTIFICATION_BROADCAST), Context.RECEIVER_EXPORTED);
 
-        // 알림 권한 요청
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                 ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
                         != PackageManager.PERMISSION_GRANTED) {
@@ -80,25 +77,71 @@ public class MainActivity extends AppCompatActivity {
                     new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 100);
         }
 
-        // 알림 클릭 진입 처리 (감정, 사기 결과 표시용)
-        Intent intent = getIntent();
-        if (intent != null && intent.hasExtra("alert_type")) {
-            String type = intent.getStringExtra("alert_type");
-            if ("fraud".equals(type)) {
-                showRecentMessages(5);
-            } else if ("emotion".equals(type)) {
-                String emotion = intent.getStringExtra("emotion_level");
-                emotionTextView.setText("감정 상태: " + emotion);
-            } else if ("fraud_emotion".equals(type)) {
-                showRecentMessages(5);
-                String emotion = intent.getStringExtra("emotion_level");
-                emotionTextView.setText("감정 상태: " + emotion);
-            }
-        }
+        handleIntent(getIntent());
+    }
+
+//    private void handleIntent(Intent intent) {
+//        if (intent != null && intent.hasExtra("alert_type")) {
+//            String type = intent.getStringExtra("alert_type");
+//            String emotion = intent.getStringExtra("emotion_level"); // 예: "분노", "불안" 등
+//
+//            switch (type) {
+//                case "fraud":
+//                    statusText.setText("매우 높음");
+//                    statusText.setTextColor(Color.parseColor("#CC0000"));
+//                    emotionContainer.setVisibility(View.GONE);
+//                    showRecentMessages(5);
+//                    break;
+//
+//                case "emotion":
+//                    statusText.setText("매우 높음");
+//                    statusText.setTextColor(Color.parseColor("#CC0000"));
+//                    emotionContainer.setVisibility(View.VISIBLE);
+//                    emotionAngerPercent.setText("80%"); // 실제 값 반영 필요
+//                    fraudMessageText.setText("사기 의심 없음");
+//                    break;
+//
+//                case "fraud_emotion":
+//                    statusText.setText("매우 높음");
+//                    statusText.setTextColor(Color.parseColor("#CC0000"));
+//                    emotionContainer.setVisibility(View.VISIBLE);
+//                    emotionAngerPercent.setText("80%");
+//                    showRecentMessages(5);
+//                    break;
+//
+//                default:
+//                    statusText.setText("안전");
+//                    statusText.setTextColor(Color.parseColor("#22A500"));
+//                    emotionContainer.setVisibility(View.GONE);
+//                    fraudMessageText.setText("(메시지 없음)");
+//                    break;
+//            }
+//        }
+//    }
+
+    // UI 테스트용 handleIntent 함수!!!!
+    private void handleIntent(Intent intent) {
+        // 테스트용: 감정 감지 UI 강제 표시
+        statusText.setText("매우 높음");
+        statusText.setTextColor(Color.parseColor("#CC0000"));
+
+        emotionContainer.setVisibility(View.VISIBLE);
+        emotionAngerPercent.setText("80%");
+
+        fraudMessageText.setText("사기 의심 없음");
+
+        // 실제 intent 처리는 무시
+        return;
+    }
+
+
+    private void showRecentMessages(int count) {
+        List<String> messages = MyAccessibilityService.getRecentMessages(count);
+        String combined = String.join("\n", messages);
+        fraudMessageText.setText(combined.isEmpty() ? "사기 의심 메시지 없음" : combined);
     }
 
     private void analyze(String message) {
-        // 모델 분석 대신 더미값으로 사기 경고 알림
         try {
             JSONObject result = new JSONObject();
             result.put("label", "사기");
@@ -107,43 +150,23 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             Log.e(TAG, "예측 실패", e);
         }
-
-//        float[] v = convertTextToVector(message);
-//        float[] r1 = fraud_model.predict(v);
-//        float[] r2 = emotion_model.predict(v);
-//
-//        float labelScore = fraud_model_Weight * r1[0] + emotion_model_Weight * r2[0];
-//        float confidence = fraud_model_Weight * r1[1] + emotion_model_Weight * r2[1];
-//
-//        String label = labelScore > 0.5 ? "사기" : "정상";
-//
-//        try {
-//            JSONObject result = new JSONObject();
-//            result.put("label", label);
-//            result.put("confidence", confidence);
-//            if ("사기".equals(label)) showAlert(message, result.toString());
-//        } catch (Exception e) {
-//            Log.e(TAG, "예측 실패", e);
-//        }
-//    }
-//
-//    private float[] convertTextToVector(String input) {
-//        float[] vector = new float[10];
-//        for (int i = 0; i < Math.min(input.length(), 10); i++) vector[i] = input.charAt(i);
-//        return vector;
     }
 
     private void showAlert(String message, String analysis) {
         NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel("fraud_alert", "Fraud Alerts", NotificationManager.IMPORTANCE_HIGH);
+            NotificationChannel channel = new NotificationChannel(
+                    "fraud_alert",
+                    "Fraud Alerts",
+                    NotificationManager.IMPORTANCE_HIGH
+            );
             channel.setDescription("사기 의심 메시지 경고");
             manager.createNotificationChannel(channel);
+
         }
 
-        // 알림 클릭 시 MainActivity로 이동하도록 intent 설정
         Intent intent = new Intent(this, MainActivity.class);
-        intent.putExtra("alert_type", "fraud"); // 또는 emotion, fraud_emotion
+        intent.putExtra("alert_type", "fraud");
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
         PendingIntent pendingIntent = PendingIntent.getActivity(
@@ -151,24 +174,13 @@ public class MainActivity extends AppCompatActivity {
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "fraud_alert")
                 .setSmallIcon(R.drawable.ic_warning)
-                .setContentTitle("이 대화는 피싱일 가능성이 있습니다")
-//                .setContentTitle("현재 감정 상태가 매우 불안정합니다")
-//                .setContentTitle("지금 이 대화는 매우 위험합니다")
-                .setContentText("개인정보를 절대 입력하지 마세요")
-//                .setContentText("지금 결정을 내리는 건 위험할 수 있습니다")
-//                .setContentText("즉시 대화를 중단하세요")
+                .setContentTitle("사기 피해를 입지 않도록 즉시 대화를 중단하세요.")
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setColor(Color.rgb(255, 140, 0)) // Orange
+                .setColor(Color.rgb(255, 140, 0))
                 .setAutoCancel(true)
                 .setContentIntent(pendingIntent);
 
         manager.notify(1, builder.build());
-    }
-
-    private void showRecentMessages(int count) {
-        List<String> messages = MyAccessibilityService.getRecentMessages(count);
-        String combined = String.join("\n", messages);
-        fraudMessageTextView.setText(combined.isEmpty() ? "없음" : combined);
     }
 
     @Override
@@ -199,7 +211,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults); // ← 이 줄 추가
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == 100 && grantResults.length > 0 &&
                 grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             Log.d(TAG, "알림 권한 허용됨");
