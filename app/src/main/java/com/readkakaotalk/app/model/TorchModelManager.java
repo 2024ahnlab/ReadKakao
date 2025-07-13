@@ -25,8 +25,8 @@ public class TorchModelManager {
         }
     }
 
-    public float[] predict(float[] input) {
-        Tensor inputTensor = Tensor.fromBlob(input, new long[]{1, input.length});
+    // ✅ 추가: int[] 입력을 받는 predict 함수
+    public float[] predict(Tensor inputTensor) {
         float[] output = model.forward(IValue.from(inputTensor)).toTensor().getDataAsFloatArray();
         return output;
     }

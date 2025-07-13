@@ -48,32 +48,105 @@
             android:layout_marginTop="8dp"
             android:layout_gravity="end" />
 
-        <!-- 감정 상태 영역 -->
+        <!-- 감정 상태 전체 컨테이너 -->
         <LinearLayout
             android:id="@+id/emotionContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
+            android:orientation="vertical"
             android:layout_marginTop="32dp"
             android:layout_marginBottom="16dp"
-            android:gravity="center_vertical"
             android:visibility="gone">
 
-            <TextView
-                android:layout_width="wrap_content"
+            <!-- 중립 -->
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="😡 분노"
-                android:textStyle="bold"
-                android:textSize="18sp"
-                android:layout_weight="1" />
+                android:orientation="horizontal"
+                android:layout_marginBottom="6dp">
+                <TextView
+                    android:id="@+id/emotionNeutralLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="😐 중립"
+                    android:textStyle="bold"
+                    android:textSize="18sp"
+                    android:layout_weight="1" />
+                <TextView
+                    android:id="@+id/emotionNeutralPercent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0%"
+                    android:textSize="18sp"
+                    android:textColor="#000000" />
+            </LinearLayout>
 
-            <TextView
-                android:id="@+id/emotionAngerPercent"
-                android:layout_width="wrap_content"
+            <!-- 당황 -->
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="80%"
-                android:textColor="#CC0000"
-                android:textSize="18sp" />
+                android:orientation="horizontal"
+                android:layout_marginBottom="6dp">
+                <TextView
+                    android:id="@+id/emotionSurpriseLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="😲 당황"
+                    android:textStyle="bold"
+                    android:textSize="18sp"
+                    android:layout_weight="1" />
+                <TextView
+                    android:id="@+id/emotionSurprisePercent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0%"
+                    android:textSize="18sp"
+                    android:textColor="#000000" />
+            </LinearLayout>
+
+            <!-- 불안 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="6dp">
+                <TextView
+                    android:id="@+id/emotionAnxietyLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="😨 불안"
+                    android:textStyle="bold"
+                    android:textSize="18sp"
+                    android:layout_weight="1" />
+                <TextView
+                    android:id="@+id/emotionAnxietyPercent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0%"
+                    android:textSize="18sp"
+                    android:textColor="#000000" />
+            </LinearLayout>
+
+            <!-- 분노 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+                <TextView
+                    android:id="@+id/emotionAngerLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="😡 분노"
+                    android:textStyle="bold"
+                    android:textSize="18sp"
+                    android:layout_weight="1" />
+                <TextView
+                    android:id="@+id/emotionAngerPercent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0%"
+                    android:textSize="18sp"
+                    android:textColor="#000000" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- 사기 메시지 제목 (왼쪽 정렬) -->

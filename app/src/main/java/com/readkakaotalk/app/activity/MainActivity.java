@@ -25,9 +25,11 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 
 import com.readkakaotalk.app.R;
+import com.readkakaotalk.app.model.TorchModelManager;
 import com.readkakaotalk.app.service.MyAccessibilityService;
 
 import org.json.JSONObject;
+import org.pytorch.Tensor;
 
 import java.util.List;
 
@@ -39,7 +41,11 @@ public class MainActivity extends AppCompatActivity {
     private TextView statusText;
     private TextView fraudMessageText;
     private LinearLayout emotionContainer;
+    private TextView emotionNeutralPercent;
+    private TextView emotionSurprisePercent;
+    private TextView emotionAnxietyPercent;
     private TextView emotionAngerPercent;
+    private TorchModelManager modelManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,6 +60,9 @@ public class MainActivity extends AppCompatActivity {
         statusText = findViewById(R.id.statusText);
         fraudMessageText = findViewById(R.id.fraudMessageText);
         emotionContainer = findViewById(R.id.emotionContainer);
+        emotionNeutralPercent = findViewById(R.id.emotionNeutralPercent);
+        emotionSurprisePercent = findViewById(R.id.emotionSurprisePercent);
+        emotionAnxietyPercent = findViewById(R.id.emotionAnxietyPercent);
         emotionAngerPercent = findViewById(R.id.emotionAngerPercent);
 
         Button settingsButton = findViewById(R.id.settingsButton);
@@ -61,6 +70,9 @@ public class MainActivity extends AppCompatActivity {
             Intent intent = new Intent(this, SettingsActivity.class);
             startActivity(intent);
         });
+
+        modelManager = new TorchModelManager("emotion_model.pt"); // <-- 감정 모델 파일명 지정
+        modelManager.loadModel(this); // <-- 모델 로드
 
         registerReceiver(new BroadcastReceiver() {
             @Override
@@ -126,6 +138,9 @@ public class MainActivity extends AppCompatActivity {
         statusText.setTextColor(Color.parseColor("#CC0000"));
 
         emotionContainer.setVisibility(View.VISIBLE);
+        emotionNeutralPercent.setText("0%");
+        emotionSurprisePercent.setText("0%");
+        emotionAnxietyPercent.setText("0%");
         emotionAngerPercent.setText("80%");
 
         fraudMessageText.setText("사기 의심 없음");
@@ -143,13 +158,61 @@ public class MainActivity extends AppCompatActivity {
 
     private void analyze(String message) {
         try {
+            // 사기 여부 판단
             JSONObject result = new JSONObject();
             result.put("label", "사기");
             result.put("confidence", 1.0);
             showAlert(message, result.toString());
+
+            // ✅ BERT-style 모델에 int[] tokenId 벡터 넣는 코드로 수정
+            int[] tokenIds = getTokenIdsFromTokenizer(message); // ← tokenizer가 반환하는 ID 배열이라고 가정
+            Tensor inputTensor = Tensor.fromBlob(tokenIds, new long[]{1, tokenIds.length});
+            float[] scores = modelManager.predict(inputTensor); // ← float[] 반환
+
+            // UI 표시
+            emotionContainer.setVisibility(View.VISIBLE);
+
+            int maxIndex = 0;
+            for (int i = 1; i < scores.length; i++) {
+                if (scores[i] > scores[maxIndex]) {
+                    maxIndex = i;
+                }
+            }
+
+            // 퍼센트와 라벨 View 배열 준비
+            TextView[] percentViews = {
+                    emotionNeutralPercent,
+                    emotionSurprisePercent,
+                    emotionAnxietyPercent,
+                    emotionAngerPercent
+            };
+
+            TextView[] labelViews = {
+                    findViewById(R.id.emotionNeutralLabel),
+                    findViewById(R.id.emotionSurpriseLabel),
+                    findViewById(R.id.emotionAnxietyLabel),
+                    findViewById(R.id.emotionAngerLabel)
+            };
+
+            // 점수 표시 및 색상 처리
+            for (int i = 0; i < 4; i++) {
+                percentViews[i].setText((int)(scores[i] * 100) + "%");
+                int color = (i == maxIndex) ? Color.parseColor("#CC0000") : Color.parseColor("#000000");
+                percentViews[i].setTextColor(color);
+                labelViews[i].setTextColor(color);
+            }
+
+            Log.d(TAG, "감정 예측 완료");
+
         } catch (Exception e) {
             Log.e(TAG, "예측 실패", e);
         }
+    }
+
+    // ✅ tokenizer 결과가 있다고 가정한 placeholder 함수
+    private int[] getTokenIdsFromTokenizer(String text) {
+        // 실제 구현 시: tokenizer에서 받은 token id 배열을 반환해야 함
+        return new int[]{101, 1234, 5678, 102}; // [CLS] ... [SEP] 예시
     }
 
     private void showAlert(String message, String analysis) {
