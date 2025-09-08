@@ -25,6 +25,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.readkakaotalk.app.R;
 import com.readkakaotalk.app.model.TfLiteModelManager;
@@ -45,6 +46,7 @@ public class MainActivity extends AppCompatActivity {
     private ImageButton settingsButton;
     private TfLiteModelManager modelManager;
     private SharedPreferences prefs;
+    private BroadcastReceiver messageReceiver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -62,27 +64,41 @@ public class MainActivity extends AppCompatActivity {
             startActivity(intent);
         });
 
-        // 모델 매니저 인스턴스를 얻어오고, 초기화 시도
         modelManager = TfLiteModelManager.getInstance(getApplicationContext());
         modelManager.initialize(getApplicationContext());
 
-        registerReceiver(new BroadcastReceiver() {
+        messageReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 String text = intent.getStringExtra(MyAccessibilityService.EXTRA_TEXT);
+                Log.d("MainActivity", "Broadcast received! Text: \n" + text);
                 if (text != null && !text.isEmpty()) {
                     analyze(text);
                 }
             }
-        }, new IntentFilter(MyAccessibilityService.ACTION_NOTIFICATION_BROADCAST), Context.RECEIVER_EXPORTED);
+        };
+
+        // [수정] onCreate에서 LocalBroadcastManager를 통해 Receiver를 등록합니다.
+        IntentFilter filter = new IntentFilter(MyAccessibilityService.ACTION_NOTIFICATION_BROADCAST);
+        LocalBroadcastManager.getInstance(this).registerReceiver(messageReceiver, filter);
 
         handleIntent(getIntent());
     }
 
+    // [수정] onDestroy에서 Receiver를 해제합니다.
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(messageReceiver);
+        Log.d(TAG, "MainActivity onDestroy");
+    }
+
+    // --- (이하 다른 메서드들은 변경 사항 없음) ---
+
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        setIntent(intent); // Activity의 현재 Intent를 새로 받은 것으로 교체
+        setIntent(intent);
         handleIntent(intent);
     }
 
@@ -108,17 +124,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void analyze(String message) {
-        // --- [수정] 문제 1 해결: 분석 직전 모델 초기화 상태를 확인하고 필요 시 재초기화 ---
         if (!modelManager.isInitialized()) {
             Log.w(TAG, "analyze 호출 시 모델이 초기화되지 않아 재초기화를 시도합니다.");
             modelManager.initialize(getApplicationContext());
-            // 재초기화 후에도 실패했다면 분석 중단
             if (!modelManager.isInitialized()) {
                 Log.e(TAG, "모델 재초기화 실패. 분석을 중단합니다.");
                 return;
             }
         }
-        // --------------------------------------------------------------------------
 
         try {
             int[][] inputIds = new int[1][64];
@@ -153,13 +166,11 @@ public class MainActivity extends AppCompatActivity {
             manager.createNotificationChannel(channel);
         }
 
-        // --- [수정] 문제 2 해결: 알림을 통해 전달할 Intent에 위험 정보를 명확히 담음 ---
         Intent intent = new Intent(this, MainActivity.class);
-        intent.setAction("SHOW_DANGER"); // 액션 이름을 지정하여 일반 실행과 구분
+        intent.setAction("SHOW_DANGER");
         intent.putExtra(EXTRA_IS_DANGER, true);
         intent.putExtra(EXTRA_DANGER_MESSAGE, message);
         intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        // -------------------------------------------------------------------------
 
         PendingIntent pendingIntent = PendingIntent.getActivity(
                 this, 1, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
@@ -187,11 +198,18 @@ public class MainActivity extends AppCompatActivity {
         } else {
             checkAndRequestNotificationPermission();
         }
-        // [추가] onResume에서도 intent를 처리하여 앱이 다시 활성화될 때 UI를 업데이트
+
+        // [수정] onResume에서 등록 로직 삭제
+
         handleIntent(getIntent());
     }
 
-    // (이하 나머지 코드는 이전과 동일하게 유지)
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // [수정] onPause에서 해제 로직 삭제
+    }
+
     private void checkAndRequestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -233,11 +251,5 @@ public class MainActivity extends AppCompatActivity {
                 .setCancelable(false);
         dialog = builder.create();
         dialog.show();
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        Log.d(TAG, "MainActivity onDestroy");
     }
 }
