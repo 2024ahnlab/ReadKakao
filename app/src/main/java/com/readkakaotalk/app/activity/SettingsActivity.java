@@ -4,15 +4,14 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.widget.SeekBar;
 import android.widget.TextView;
-
 import androidx.appcompat.app.AppCompatActivity;
-
+import androidx.appcompat.widget.Toolbar;
 import com.readkakaotalk.app.R;
 
 public class SettingsActivity extends AppCompatActivity {
 
-    private SeekBar ratioSeekBar, fraudThresholdSeekBar, emotionThresholdSeekBar;
-    private TextView ratioText, fraudText, emotionText;
+    private SeekBar fraudThresholdSeekBar;
+    private TextView fraudText;
     private SharedPreferences prefs;
 
     @Override
@@ -20,37 +19,43 @@ public class SettingsActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
 
+        // 툴바 설정 (뒤로가기 버튼)
+        Toolbar toolbar = findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+            getSupportActionBar().setDisplayShowHomeEnabled(true);
+        }
+        toolbar.setNavigationOnClickListener(v -> onBackPressed());
+
         prefs = getSharedPreferences("settings", MODE_PRIVATE);
 
-        ratioSeekBar = findViewById(R.id.ratioSeekBar);
         fraudThresholdSeekBar = findViewById(R.id.fraudThresholdSeekBar);
-        emotionThresholdSeekBar = findViewById(R.id.emotionThresholdSeekBar);
-
-        ratioText = findViewById(R.id.ratioText);
         fraudText = findViewById(R.id.fraudText);
-        emotionText = findViewById(R.id.emotionText);
 
-        float modelRatio = prefs.getFloat("model_ratio", 0.5f);
+        // 저장된 값 불러오기 (없으면 기본값 70%)
         float fraudThreshold = prefs.getFloat("fraud_threshold", 0.7f);
-        float emotionThreshold = prefs.getFloat("emotion_threshold", 0.5f);
-
-        initSeekBar(ratioSeekBar, ratioText, "모델 비율", "model_ratio", modelRatio);
-        initSeekBar(fraudThresholdSeekBar, fraudText, "사기 임계값", "fraud_threshold", fraudThreshold);
-        initSeekBar(emotionThresholdSeekBar, emotionText, "감정 임계값", "emotion_threshold", emotionThreshold);
+        initSeekBar(fraudThresholdSeekBar, fraudText, "사기 탐지 민감도", "fraud_threshold", fraudThreshold);
     }
 
     private void initSeekBar(SeekBar bar, TextView label, String labelPrefix, String key, float initValue) {
-        bar.setProgress((int)(initValue * 100));
-        label.setText(labelPrefix + ": " + initValue);
+        int initialProgress = (int)(initValue * 100);
+        bar.setProgress(initialProgress);
+        label.setText(labelPrefix + ": " + initialProgress + "%");
 
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                float val = progress / 100f;
-                label.setText(labelPrefix + ": " + val);
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                // 실시간으로 텍스트 업데이트
+                label.setText(labelPrefix + ": " + progress + "%");
             }
 
-            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
-            @Override public void onStopTrackingTouch(SeekBar seekBar) {
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                // 터치가 끝나면 값 저장
                 float val = seekBar.getProgress() / 100f;
                 prefs.edit().putFloat(key, val).apply();
             }

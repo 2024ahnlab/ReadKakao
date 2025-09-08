@@ -1,16 +1,13 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Theme.ReadKakaoTalk" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <!-- Primary brand color (노란색 계열로 변경) -->
-        <item name="colorPrimary">#F9E054</item> <!-- 연노랑 -->
-        <item name="colorPrimaryVariant">#F2C94C</item> <!-- 진한 노랑 -->
-        <item name="colorOnPrimary">#000000</item> <!-- 버튼 위 텍스트 색: 검정 -->
-
-        <!-- Secondary color -->
-        <item name="colorSecondary">#FFE066</item>
-        <item name="colorSecondaryVariant">#FFD700</item>
-        <item name="colorOnSecondary">#000000</item>
-
-        <!-- Status bar -->
-        <item name="android:statusBarColor">#E8E8E8</item>
+    <style name="Base.Theme.PhishingGuard" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryVariant">@color/colorPrimaryDark</item>
+        <item name="colorOnPrimary">@color/textColorPrimary</item>
+        <item name="colorSecondary">@color/colorAccent</item>
+        <item name="colorSecondaryVariant">@color/colorAccent</item>
+        <item name="colorOnSecondary">@color/textColorPrimary</item>
+        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
     </style>
+
+    <style name="Theme.PhishingGuard" parent="Base.Theme.PhishingGuard" />
 </resources>

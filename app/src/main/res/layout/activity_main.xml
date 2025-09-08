@@ -1,202 +1,117 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#E8E8E8">
+    android:background="@color/background_light"
+    android:orientation="vertical"
+    tools:context=".activity.MainActivity">
 
-    <LinearLayout
+    <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingTop="48dp"
-        android:paddingStart="32dp"
-        android:paddingEnd="32dp"
-        android:paddingBottom="24dp"
-        android:gravity="center_horizontal">
+        android:layout_height="wrap_content">
 
-        <!-- 상단 경고 아이콘 + 텍스트 (왼쪽 정렬) -->
-        <LinearLayout
+        <androidx.appcompat.widget.Toolbar
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="start|center_vertical">
-
-            <ImageView
-                android:layout_width="50dp"
-                android:layout_height="50dp"
-                android:src="@drawable/ic_warning" />
+            android:layout_height="?attr/actionBarSize"
+            android:background="@color/colorPrimary">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="피싱 위험도"
-                android:textSize="30sp"
-                android:textStyle="bold"
-                android:textColor="#000000"
-                android:layout_marginStart="8dp" />
-        </LinearLayout>
+                android:text="Phishing Guard"
+                android:textColor="@color/textColorPrimary"
+                android:textSize="20sp"
+                android:textStyle="bold" />
 
-        <!-- 상태 텍스트 (오른쪽 정렬) -->
-        <TextView
-            android:id="@+id/statusText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="안전"
-            android:textSize="52sp"
-            android:textStyle="bold"
-            android:textColor="#22A500"
-            android:layout_marginTop="8dp"
-            android:layout_gravity="end" />
-
-        <!-- 감정 상태 전체 컨테이너 -->
-        <LinearLayout
-            android:id="@+id/emotionContainer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginTop="32dp"
-            android:layout_marginBottom="16dp"
-            android:visibility="gone">
-
-            <!-- 중립 -->
-            <LinearLayout
-                android:layout_width="match_parent"
+            <ImageButton
+                android:id="@+id/settingsButton"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="6dp">
-                <TextView
-                    android:id="@+id/emotionNeutralLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="😐 중립"
-                    android:textStyle="bold"
-                    android:textSize="18sp"
-                    android:layout_weight="1" />
-                <TextView
-                    android:id="@+id/emotionNeutralPercent"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="0%"
-                    android:textSize="18sp"
-                    android:textColor="#000000" />
-            </LinearLayout>
+                android:layout_gravity="end"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:padding="16dp"
+                android:src="@drawable/ic_settings"
+                android:contentDescription="@string/settings_description" />
+        </androidx.appcompat.widget.Toolbar>
+    </com.google.android.material.appbar.AppBarLayout>
 
-            <!-- 당황 -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="6dp">
-                <TextView
-                    android:id="@+id/emotionSurpriseLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="😲 당황"
-                    android:textStyle="bold"
-                    android:textSize="18sp"
-                    android:layout_weight="1" />
-                <TextView
-                    android:id="@+id/emotionSurprisePercent"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="0%"
-                    android:textSize="18sp"
-                    android:textColor="#000000" />
-            </LinearLayout>
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
 
-            <!-- 불안 -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="6dp">
-                <TextView
-                    android:id="@+id/emotionAnxietyLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="😨 불안"
-                    android:textStyle="bold"
-                    android:textSize="18sp"
-                    android:layout_weight="1" />
-                <TextView
-                    android:id="@+id/emotionAnxietyPercent"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="0%"
-                    android:textSize="18sp"
-                    android:textColor="#000000" />
-            </LinearLayout>
-
-            <!-- 분노 -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content">
-                <TextView
-                    android:id="@+id/emotionAngerLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="😡 분노"
-                    android:textStyle="bold"
-                    android:textSize="18sp"
-                    android:layout_weight="1" />
-                <TextView
-                    android:id="@+id/emotionAngerPercent"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="0%"
-                    android:textSize="18sp"
-                    android:textColor="#000000" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- 사기 메시지 제목 (왼쪽 정렬) -->
-        <TextView
-            android:id="@+id/fraudTitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="사기 위험 메시지"
-            android:textStyle="bold"
-            android:textSize="20sp"
-            android:textColor="#000000"
-            android:elevation="2dp"
-            android:layout_marginTop="24dp"
-            android:layout_marginBottom="12dp"
-            android:layout_gravity="start" />
-
-        <!-- 메시지 박스 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="#BFD3E4"
-            android:padding="16dp"
-            android:layout_marginBottom="32dp"
             android:orientation="vertical"
-            android:elevation="6dp"
-            android:backgroundTintMode="src_in"
-            android:layout_marginTop="0dp"
-            android:clipToOutline="true"
-            android:backgroundTint="#BFD3E4">
+            android:padding="16dp">
 
-            <TextView
-                android:id="@+id/fraudMessageText"
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="(메시지 내용...)"
-                android:textSize="14sp"
-                android:textColor="#000000" />
+                app:cardCornerRadius="12dp"
+                app:cardElevation="8dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="24dp"
+                    android:gravity="center">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="현재 피싱 위험도"
+                        android:textColor="@color/textColorSecondary"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:id="@+id/statusText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="안전"
+                        android:textColor="@color/status_safe"
+                        android:textSize="48sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="8dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="24dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="최근 분석된 위험 메시지"
+                        android:textColor="@color/textColorOnLight"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/fraudMessageText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:padding="16dp"
+                        android:text="(분석된 메시지가 없습니다)"
+                        android:textColor="@color/textColorOnLight"
+                        android:textSize="16sp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
         </LinearLayout>
-
-        <!-- 설정 버튼 -->
-        <Button
-            android:id="@+id/settingsButton"
-            android:layout_width="160dp"
-            android:layout_height="52dp"
-            android:text="설정"
-            android:textStyle="bold"
-            android:textColor="#000000"
-            android:layout_marginBottom="16dp"
-            android:layout_gravity="center_horizontal"
-            android:background="@drawable/rounded_button" />
-
-    </LinearLayout>
-</ScrollView>
+    </ScrollView>
+</LinearLayout>

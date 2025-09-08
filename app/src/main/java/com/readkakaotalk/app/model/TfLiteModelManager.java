@@ -12,23 +12,39 @@ import java.util.Map;
 
 public class TfLiteModelManager {
     private static final String TAG = "TfLiteModelManager";
-    private Interpreter tflite;
-    private String modelFile;
 
-    public TfLiteModelManager(String modelFileName) {
-        this.modelFile = modelFileName;
+    private static TfLiteModelManager instance;
+    private Interpreter tflite;
+    private boolean isInitialized = false;
+
+    private TfLiteModelManager() {}
+
+    public static synchronized TfLiteModelManager getInstance(Context context) {
+        if (instance == null) {
+            instance = new TfLiteModelManager();
+        }
+        // initialize()를 여기서 호출하지 않고, MainActivity에서 명시적으로 호출하도록 변경
+        return instance;
     }
 
-    public void loadModel(Context context) {
+    // --- [수정] 외부에서 호출할 수 있도록 public으로 변경 ---
+    public void initialize(Context context) {
+        if (isInitialized) return;
         try {
-            MappedByteBuffer modelBuffer = loadModelFile(context, modelFile);
+            MappedByteBuffer modelBuffer = loadModelFile(context, "distilkobert_fp16.tflite");
             Interpreter.Options options = new Interpreter.Options();
             tflite = new Interpreter(modelBuffer, options);
-            Log.d(TAG, "TFLite 모델 로드 완료: " + modelFile);
+            isInitialized = true;
+            Log.d(TAG, "TFLite 모델이 성공적으로 초기화되었습니다.");
         } catch (Exception e) {
-            Log.e(TAG, "TFLite 모델 로드 실패", e);
-            throw new RuntimeException("Failed to load TFLite model", e);
+            Log.e(TAG, "TFLite 모델 초기화 실패", e);
+            isInitialized = false;
         }
+    }
+
+    // --- [추가] 모델이 초기화되었는지 확인하는 메소드 ---
+    public boolean isInitialized() {
+        return isInitialized;
     }
 
     private MappedByteBuffer loadModelFile(Context context, String modelFileName) throws Exception {
@@ -40,34 +56,23 @@ public class TfLiteModelManager {
         return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength);
     }
 
-    /**
-     * [최종 수정] 2개의 정수 배열을 입력받아 추론을 실행합니다.
-     * @param inputIds 토큰화된 문장 배열 (예: [1][64])
-     * @param attentionMask 어텐션 마스크 배열 (예: [1][64])
-     * @return 모델의 추론 결과 (예: [1][2])
-     */
     public float[][] predict(int[][] inputIds, int[][] attentionMask) {
-        if (tflite == null) {
-            Log.e(TAG, "모델이 로드되지 않았습니다.");
+        if (!isInitialized || tflite == null) {
+            Log.e(TAG, "predict 호출 시 모델이 초기화되지 않은 상태입니다.");
             return null;
         }
 
-        // 1. 입력 데이터를 Map 형태로 준비합니다.
         Object[] inputs = {inputIds, attentionMask};
-
-        // 2. 출력 데이터를 담을 Map을 준비합니다.
-        float[][] output = new float[1][2]; // 모델의 출력 형태 [1, 2]에 맞게 수정
+        float[][] output = new float[1][2];
         Map<Integer, Object> outputs = new HashMap<>();
         outputs.put(0, output);
 
-        // 3. 추론 실행
         try {
             tflite.runForMultipleInputsOutputs(inputs, outputs);
         } catch (Exception e) {
             Log.e(TAG, "추론 중 오류 발생", e);
             return null;
         }
-
         return (float[][]) outputs.get(0);
     }
 
@@ -75,6 +80,8 @@ public class TfLiteModelManager {
         if (tflite != null) {
             tflite.close();
             tflite = null;
+            isInitialized = false;
+            // instance = null; // 싱글턴 인스턴스를 여기서 null로 만들지 않음
         }
     }
 }

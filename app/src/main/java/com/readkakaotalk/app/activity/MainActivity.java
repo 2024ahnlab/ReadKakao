@@ -5,18 +5,20 @@ import android.app.AlertDialog;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
-import android.content.*;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.util.Log;
-import android.view.View;
 import android.view.accessibility.AccessibilityManager;
-import android.widget.LinearLayout;
+import android.widget.ImageButton;
 import android.widget.TextView;
-import android.widget.Button;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -25,219 +27,198 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 
 import com.readkakaotalk.app.R;
-import com.readkakaotalk.app.model.TfLiteModelManager; // <--- 변경: TfliteModelManager 임포트
+import com.readkakaotalk.app.model.TfLiteModelManager;
 import com.readkakaotalk.app.service.MyAccessibilityService;
-
-import org.json.JSONObject;
-// import org.pytorch.Tensor; // <--- 삭제: Pytorch Tensor 불필요
 
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
+
     private static final String TAG = "MainActivity";
+    private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 100;
+    public static final String EXTRA_IS_DANGER = "is_danger";
+    public static final String EXTRA_DANGER_MESSAGE = "danger_message";
 
     private AlertDialog dialog = null;
-
     private TextView statusText;
     private TextView fraudMessageText;
-    private LinearLayout emotionContainer;
-    private TextView emotionNeutralPercent;
-    private TextView emotionSurprisePercent;
-    private TextView emotionAnxietyPercent;
-    private TextView emotionAngerPercent;
-    private TfLiteModelManager modelManager; // <--- 변경: 모델 매니저 타입
+    private ImageButton settingsButton;
+    private TfLiteModelManager modelManager;
+    private SharedPreferences prefs;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        if (getSupportActionBar() != null) getSupportActionBar().hide();
         setContentView(R.layout.activity_main);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            getWindow().setStatusBarColor(Color.parseColor("#E8E8E8")); // 원하는 색상 코드
-        }
-        Log.d(TAG, "MainActivity 시작됨");
+        Log.d(TAG, "MainActivity onCreate");
 
+        prefs = getSharedPreferences("settings", MODE_PRIVATE);
         statusText = findViewById(R.id.statusText);
         fraudMessageText = findViewById(R.id.fraudMessageText);
-        emotionContainer = findViewById(R.id.emotionContainer);
-        emotionNeutralPercent = findViewById(R.id.emotionNeutralPercent);
-        emotionSurprisePercent = findViewById(R.id.emotionSurprisePercent);
-        emotionAnxietyPercent = findViewById(R.id.emotionAnxietyPercent);
-        emotionAngerPercent = findViewById(R.id.emotionAngerPercent);
+        settingsButton = findViewById(R.id.settingsButton);
 
-        Button settingsButton = findViewById(R.id.settingsButton);
         settingsButton.setOnClickListener(v -> {
             Intent intent = new Intent(this, SettingsActivity.class);
             startActivity(intent);
         });
 
-        // --- 모델 로딩 부분 수정 ---
-        try {
-            modelManager = new TfLiteModelManager("distilkobert_fp16.tflite"); // <-- TFLite 모델 파일명 지정
-            modelManager.loadModel(this); // <-- 모델 로드
-        } catch (Exception e) {
-            Log.e(TAG, "TFLite 모델 초기화에 실패했습니다.", e);
-            // 모델 로드 실패 시 사용자에게 알림 등 예외 처리 구현
-        }
-        // -------------------------
+        // 모델 매니저 인스턴스를 얻어오고, 초기화 시도
+        modelManager = TfLiteModelManager.getInstance(getApplicationContext());
+        modelManager.initialize(getApplicationContext());
 
         registerReceiver(new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 String text = intent.getStringExtra(MyAccessibilityService.EXTRA_TEXT);
-                if (text != null) analyze(text);
+                if (text != null && !text.isEmpty()) {
+                    analyze(text);
+                }
             }
         }, new IntentFilter(MyAccessibilityService.ACTION_NOTIFICATION_BROADCAST), Context.RECEIVER_EXPORTED);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
-                        != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 100);
-        }
 
         handleIntent(getIntent());
     }
 
-    // UI 테스트용 handleIntent 함수!!!!
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent); // Activity의 현재 Intent를 새로 받은 것으로 교체
+        handleIntent(intent);
+    }
+
     private void handleIntent(Intent intent) {
-        // 테스트용: 감정 감지 UI 강제 표시
-        statusText.setText("매우 높음");
-        statusText.setTextColor(Color.parseColor("#CC0000"));
-
-        emotionContainer.setVisibility(View.VISIBLE);
-        emotionNeutralPercent.setText("0%");
-        emotionSurprisePercent.setText("0%");
-        emotionAnxietyPercent.setText("0%");
-        emotionAngerPercent.setText("80%");
-
-        fraudMessageText.setText("사기 의심 없음");
-
-        // 실제 intent 처리는 무시
-        return;
+        if (intent != null && intent.getBooleanExtra(EXTRA_IS_DANGER, false)) {
+            String message = intent.getStringExtra(EXTRA_DANGER_MESSAGE);
+            updateUiForDanger(message);
+        } else if (Intent.ACTION_MAIN.equals(intent.getAction())) {
+            updateInitialUI();
+        }
     }
 
-
-    private void showRecentMessages(int count) {
-        List<String> messages = MyAccessibilityService.getRecentMessages(count);
-        String combined = String.join("\n", messages);
-        fraudMessageText.setText(combined.isEmpty() ? "사기 의심 메시지 없음" : combined);
+    private void updateInitialUI() {
+        statusText.setText("안전");
+        statusText.setTextColor(ContextCompat.getColor(this, R.color.status_safe));
+        fraudMessageText.setText("(분석된 위험 메시지가 없습니다)");
     }
 
-    // MainActivity.java의 analyze 메소드를 아래와 같이 수정하세요.
+    private void updateUiForDanger(String message) {
+        statusText.setText("위험");
+        statusText.setTextColor(ContextCompat.getColor(this, R.color.status_danger));
+        fraudMessageText.setText(message);
+    }
 
     private void analyze(String message) {
-        if (modelManager == null) {
-            Log.e(TAG, "모델이 초기화되지 않아 분석을 중단합니다.");
-            return;
-        }
-
-        try {
-            // --- 토크나이저 부분 (향후 실제 라이브러리로 교체 필요) ---
-            // 실제 토크나이저는 input_ids와 attention_mask를 모두 생성해야 합니다.
-            // 길이는 모델에 맞게 64로 맞춰야 합니다.
-            int[][] inputIds = new int[1][64]; // placeholder
-            int[][] attentionMask = new int[1][64]; // placeholder
-            // 예시: [101, 2000, 3000, 102, 0, 0, ...] -> input_ids
-            //       [1,   1,    1,    1,   0, 0, ...] -> attention_mask
-            // --------------------------------------------------------
-
-            // --- 추론 부분 수정 ---
-            float[][] output = modelManager.predict(inputIds, attentionMask);
-            if (output == null || output.length == 0) {
-                Log.e(TAG, "모델 출력값이 유효하지 않습니다.");
+        // --- [수정] 문제 1 해결: 분석 직전 모델 초기화 상태를 확인하고 필요 시 재초기화 ---
+        if (!modelManager.isInitialized()) {
+            Log.w(TAG, "analyze 호출 시 모델이 초기화되지 않아 재초기화를 시도합니다.");
+            modelManager.initialize(getApplicationContext());
+            // 재초기화 후에도 실패했다면 분석 중단
+            if (!modelManager.isInitialized()) {
+                Log.e(TAG, "모델 재초기화 실패. 분석을 중단합니다.");
                 return;
             }
-            float[] scores = output[0]; // [결과1, 결과2] 형태의 배열
-            // --------------------
+        }
+        // --------------------------------------------------------------------------
 
-            // --- UI 업데이트 부분 (모델이 "사기 탐지"용이라고 가정) ---
-            // 감정 분석 UI는 숨깁니다.
-            emotionContainer.setVisibility(View.GONE);
+        try {
+            int[][] inputIds = new int[1][64];
+            int[][] attentionMask = new int[1][64];
+            // TODO: 여기에 실제 토크나이저 코드를 적용해야 합니다.
 
-            float notFraudScore = scores[0]; // 첫번째 결과가 '사기 아님' 확률이라고 가정
-            float fraudScore = scores[1];    // 두번째 결과가 '사기' 확률이라고 가정
+            float[][] output = modelManager.predict(inputIds, attentionMask);
+            if (output == null) return;
 
-            Log.d(TAG, "분석 결과: 사기 아님 확률=" + notFraudScore + ", 사기 확률=" + fraudScore);
+            float[] scores = output[0];
+            float fraudScore = scores[1];
+            Log.d(TAG, "분석 결과: [사기아님:" + scores[0] + ", 사기:" + fraudScore + "]");
+            float fraudThreshold = prefs.getFloat("fraud_threshold", 0.7f);
 
-            // fraudScore가 특정 임계값(예: 0.7)을 넘으면 위험으로 판단
-            if (fraudScore > 0.7) {
-                statusText.setText("매우 높음 (사기 확률: " + (int)(fraudScore * 100) + "%)");
-                statusText.setTextColor(Color.parseColor("#CC0000"));
-                fraudMessageText.setText(message); // 사기 의심 메시지 표시
-                showAlert(message, "사기 의심"); // 알림 발생
+            if (fraudScore > fraudThreshold) {
+                updateUiForDanger(message);
+                showAlert(message);
             } else {
-                statusText.setText("안전 (사기 확률: " + (int)(fraudScore * 100) + "%)");
-                statusText.setTextColor(Color.parseColor("#22A500"));
-                fraudMessageText.setText("(최근 분석된 메시지 없음)");
+                updateInitialUI();
             }
-            // ----------------------------------------------------
-
         } catch (Exception e) {
-            Log.e(TAG, "예측 실패", e);
+            Log.e(TAG, "분석 중 오류 발생", e);
         }
     }
 
-    // ✅ tokenizer 결과가 있다고 가정한 placeholder 함수
-    private int[] getTokenIdsFromTokenizer(String text) {
-        // 실제 구현 시: tokenizer에서 받은 token id 배열을 반환해야 함
-        // 예시: 입력 길이를 128로 맞추고 패딩을 추가하는 등의 전처리가 필요할 수 있습니다.
-        return new int[]{101, 1234, 5678, 102}; // [CLS] ... [SEP] 예시
-    }
-
-    private void showAlert(String message, String analysis) {
+    private void showAlert(String message) {
         NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    "fraud_alert",
-                    "Fraud Alerts",
-                    NotificationManager.IMPORTANCE_HIGH
-            );
-            channel.setDescription("사기 의심 메시지 경고");
-            manager.createNotificationChannel(channel);
+        String channelId = "fraud_alert_channel";
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(channelId, "사기 의심 경고", NotificationManager.IMPORTANCE_HIGH);
+            manager.createNotificationChannel(channel);
         }
 
+        // --- [수정] 문제 2 해결: 알림을 통해 전달할 Intent에 위험 정보를 명확히 담음 ---
         Intent intent = new Intent(this, MainActivity.class);
-        intent.putExtra("alert_type", "fraud");
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        intent.setAction("SHOW_DANGER"); // 액션 이름을 지정하여 일반 실행과 구분
+        intent.putExtra(EXTRA_IS_DANGER, true);
+        intent.putExtra(EXTRA_DANGER_MESSAGE, message);
+        intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        // -------------------------------------------------------------------------
 
         PendingIntent pendingIntent = PendingIntent.getActivity(
-                this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                this, 1, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "fraud_alert")
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, channelId)
                 .setSmallIcon(R.drawable.ic_warning)
-                .setContentTitle("사기 피해를 입지 않도록 즉시 대화를 중단하세요.")
+                .setContentTitle("피싱 위험 감지!")
+                .setContentText("사기 의심 메시지가 도착했습니다.")
+                .setStyle(new NotificationCompat.BigTextStyle().bigText("사기 의심 메시지가 도착했습니다: \"" + message + "\""))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setColor(Color.rgb(255, 140, 0))
                 .setAutoCancel(true)
                 .setContentIntent(pendingIntent);
 
-        manager.notify(1, builder.build());
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            manager.notify(1, builder.build());
+        }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (dialog != null) dialog.dismiss();
-        if (!checkAccessibilityPermission())
-            showPermissionDialog("접근성 권한 필요", "접근성 권한이 필요합니다.",
-                    new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+        if (dialog != null && dialog.isShowing()) dialog.dismiss();
+        if (!checkAccessibilityPermission()) {
+            showPermissionDialog("접근성 권한 필요", "피싱 메시지를 감지하기 위해 접근성 권한이 반드시 필요합니다.", new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+        } else {
+            checkAndRequestNotificationPermission();
+        }
+        // [추가] onResume에서도 intent를 처리하여 앱이 다시 활성화될 때 UI를 업데이트
+        handleIntent(getIntent());
     }
 
-    // --- 추가: onDestroy에서 모델 리소스 해제 ---
-    @Override
-    protected void onDestroy() {
-        if (modelManager != null) {
-            modelManager.close();
+    // (이하 나머지 코드는 이전과 동일하게 유지)
+    private void checkAndRequestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
+                        NOTIFICATION_PERMISSION_REQUEST_CODE);
+            }
         }
-        super.onDestroy();
     }
-    // ------------------------------------
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "알림 권한이 허용되었습니다.", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "알림 권한이 거부되어 위험 경고를 받으실 수 없습니다.", Toast.LENGTH_LONG).show();
+            }
+        }
+    }
 
     private boolean checkAccessibilityPermission() {
         AccessibilityManager manager = (AccessibilityManager) getSystemService(Context.ACCESSIBILITY_SERVICE);
+        if (manager == null) return false;
         List<AccessibilityServiceInfo> list = manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_GENERIC);
+        if (list == null) return false;
         for (AccessibilityServiceInfo info : list) {
             if (info.getResolveInfo().serviceInfo.packageName.equals(getPackageName())) return true;
         }
@@ -245,19 +226,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showPermissionDialog(String title, String message, Intent settingIntent) {
+        if (dialog != null && dialog.isShowing()) return;
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle(title).setMessage(message)
-                .setPositiveButton("설정", (dialog, which) -> startActivity(settingIntent));
+                .setPositiveButton("설정으로 이동", (d, which) -> startActivity(settingIntent))
+                .setCancelable(false);
         dialog = builder.create();
         dialog.show();
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == 100 && grantResults.length > 0 &&
-                grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            Log.d(TAG, "알림 권한 허용됨");
-        }
+    protected void onDestroy() {
+        super.onDestroy();
+        Log.d(TAG, "MainActivity onDestroy");
     }
 }

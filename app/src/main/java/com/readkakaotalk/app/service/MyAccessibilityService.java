@@ -19,8 +19,8 @@ public class MyAccessibilityService extends AccessibilityService {
     private static final String TAG = "AccessibilityService";
     public static final String ACTION_NOTIFICATION_BROADCAST = "MyAccessibilityService_LocalBroadcast";
     public static final String EXTRA_TEXT = "extra_text";
-//    public static final String TARGET_APP_PACKAGE = "com.kakao.talk";
-    public static final String TARGET_APP_PACKAGE = "jp.naver.line.android";
+    public static final String TARGET_APP_PACKAGE = "com.kakao.talk";
+//    public static final String TARGET_APP_PACKAGE = "jp.naver.line.android";
     private static final java.util.Queue<String> recentMessages = new java.util.LinkedList<>();
     public static java.util.List<String> getRecentMessages(int count) {
         return new java.util.ArrayList<>(recentMessages);
