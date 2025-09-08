@@ -25,11 +25,11 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 
 import com.readkakaotalk.app.R;
-import com.readkakaotalk.app.model.TorchModelManager;
+import com.readkakaotalk.app.model.TfLiteModelManager; // <--- 변경: TfliteModelManager 임포트
 import com.readkakaotalk.app.service.MyAccessibilityService;
 
 import org.json.JSONObject;
-import org.pytorch.Tensor;
+// import org.pytorch.Tensor; // <--- 삭제: Pytorch Tensor 불필요
 
 import java.util.List;
 
@@ -45,7 +45,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView emotionSurprisePercent;
     private TextView emotionAnxietyPercent;
     private TextView emotionAngerPercent;
-    private TorchModelManager modelManager;
+    private TfLiteModelManager modelManager; // <--- 변경: 모델 매니저 타입
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -71,8 +71,15 @@ public class MainActivity extends AppCompatActivity {
             startActivity(intent);
         });
 
-        modelManager = new TorchModelManager("emotion_model.pt"); // <-- 감정 모델 파일명 지정
-        modelManager.loadModel(this); // <-- 모델 로드
+        // --- 모델 로딩 부분 수정 ---
+        try {
+            modelManager = new TfLiteModelManager("distilkobert_fp16.tflite"); // <-- TFLite 모델 파일명 지정
+            modelManager.loadModel(this); // <-- 모델 로드
+        } catch (Exception e) {
+            Log.e(TAG, "TFLite 모델 초기화에 실패했습니다.", e);
+            // 모델 로드 실패 시 사용자에게 알림 등 예외 처리 구현
+        }
+        // -------------------------
 
         registerReceiver(new BroadcastReceiver() {
             @Override
@@ -91,45 +98,6 @@ public class MainActivity extends AppCompatActivity {
 
         handleIntent(getIntent());
     }
-
-//    private void handleIntent(Intent intent) {
-//        if (intent != null && intent.hasExtra("alert_type")) {
-//            String type = intent.getStringExtra("alert_type");
-//            String emotion = intent.getStringExtra("emotion_level"); // 예: "분노", "불안" 등
-//
-//            switch (type) {
-//                case "fraud":
-//                    statusText.setText("매우 높음");
-//                    statusText.setTextColor(Color.parseColor("#CC0000"));
-//                    emotionContainer.setVisibility(View.GONE);
-//                    showRecentMessages(5);
-//                    break;
-//
-//                case "emotion":
-//                    statusText.setText("매우 높음");
-//                    statusText.setTextColor(Color.parseColor("#CC0000"));
-//                    emotionContainer.setVisibility(View.VISIBLE);
-//                    emotionAngerPercent.setText("80%"); // 실제 값 반영 필요
-//                    fraudMessageText.setText("사기 의심 없음");
-//                    break;
-//
-//                case "fraud_emotion":
-//                    statusText.setText("매우 높음");
-//                    statusText.setTextColor(Color.parseColor("#CC0000"));
-//                    emotionContainer.setVisibility(View.VISIBLE);
-//                    emotionAngerPercent.setText("80%");
-//                    showRecentMessages(5);
-//                    break;
-//
-//                default:
-//                    statusText.setText("안전");
-//                    statusText.setTextColor(Color.parseColor("#22A500"));
-//                    emotionContainer.setVisibility(View.GONE);
-//                    fraudMessageText.setText("(메시지 없음)");
-//                    break;
-//            }
-//        }
-//    }
 
     // UI 테스트용 handleIntent 함수!!!!
     private void handleIntent(Intent intent) {
@@ -156,53 +124,54 @@ public class MainActivity extends AppCompatActivity {
         fraudMessageText.setText(combined.isEmpty() ? "사기 의심 메시지 없음" : combined);
     }
 
+    // MainActivity.java의 analyze 메소드를 아래와 같이 수정하세요.
+
     private void analyze(String message) {
+        if (modelManager == null) {
+            Log.e(TAG, "모델이 초기화되지 않아 분석을 중단합니다.");
+            return;
+        }
+
         try {
-            // 사기 여부 판단
-            JSONObject result = new JSONObject();
-            result.put("label", "사기");
-            result.put("confidence", 1.0);
-            showAlert(message, result.toString());
+            // --- 토크나이저 부분 (향후 실제 라이브러리로 교체 필요) ---
+            // 실제 토크나이저는 input_ids와 attention_mask를 모두 생성해야 합니다.
+            // 길이는 모델에 맞게 64로 맞춰야 합니다.
+            int[][] inputIds = new int[1][64]; // placeholder
+            int[][] attentionMask = new int[1][64]; // placeholder
+            // 예시: [101, 2000, 3000, 102, 0, 0, ...] -> input_ids
+            //       [1,   1,    1,    1,   0, 0, ...] -> attention_mask
+            // --------------------------------------------------------
 
-            // ✅ BERT-style 모델에 int[] tokenId 벡터 넣는 코드로 수정
-            int[] tokenIds = getTokenIdsFromTokenizer(message); // ← tokenizer가 반환하는 ID 배열이라고 가정
-            Tensor inputTensor = Tensor.fromBlob(tokenIds, new long[]{1, tokenIds.length});
-            float[] scores = modelManager.predict(inputTensor); // ← float[] 반환
-
-            // UI 표시
-            emotionContainer.setVisibility(View.VISIBLE);
-
-            int maxIndex = 0;
-            for (int i = 1; i < scores.length; i++) {
-                if (scores[i] > scores[maxIndex]) {
-                    maxIndex = i;
-                }
+            // --- 추론 부분 수정 ---
+            float[][] output = modelManager.predict(inputIds, attentionMask);
+            if (output == null || output.length == 0) {
+                Log.e(TAG, "모델 출력값이 유효하지 않습니다.");
+                return;
             }
+            float[] scores = output[0]; // [결과1, 결과2] 형태의 배열
+            // --------------------
 
-            // 퍼센트와 라벨 View 배열 준비
-            TextView[] percentViews = {
-                    emotionNeutralPercent,
-                    emotionSurprisePercent,
-                    emotionAnxietyPercent,
-                    emotionAngerPercent
-            };
+            // --- UI 업데이트 부분 (모델이 "사기 탐지"용이라고 가정) ---
+            // 감정 분석 UI는 숨깁니다.
+            emotionContainer.setVisibility(View.GONE);
 
-            TextView[] labelViews = {
-                    findViewById(R.id.emotionNeutralLabel),
-                    findViewById(R.id.emotionSurpriseLabel),
-                    findViewById(R.id.emotionAnxietyLabel),
-                    findViewById(R.id.emotionAngerLabel)
-            };
+            float notFraudScore = scores[0]; // 첫번째 결과가 '사기 아님' 확률이라고 가정
+            float fraudScore = scores[1];    // 두번째 결과가 '사기' 확률이라고 가정
 
-            // 점수 표시 및 색상 처리
-            for (int i = 0; i < 4; i++) {
-                percentViews[i].setText((int)(scores[i] * 100) + "%");
-                int color = (i == maxIndex) ? Color.parseColor("#CC0000") : Color.parseColor("#000000");
-                percentViews[i].setTextColor(color);
-                labelViews[i].setTextColor(color);
+            Log.d(TAG, "분석 결과: 사기 아님 확률=" + notFraudScore + ", 사기 확률=" + fraudScore);
+
+            // fraudScore가 특정 임계값(예: 0.7)을 넘으면 위험으로 판단
+            if (fraudScore > 0.7) {
+                statusText.setText("매우 높음 (사기 확률: " + (int)(fraudScore * 100) + "%)");
+                statusText.setTextColor(Color.parseColor("#CC0000"));
+                fraudMessageText.setText(message); // 사기 의심 메시지 표시
+                showAlert(message, "사기 의심"); // 알림 발생
+            } else {
+                statusText.setText("안전 (사기 확률: " + (int)(fraudScore * 100) + "%)");
+                statusText.setTextColor(Color.parseColor("#22A500"));
+                fraudMessageText.setText("(최근 분석된 메시지 없음)");
             }
-
-            Log.d(TAG, "감정 예측 완료");
+            // ----------------------------------------------------
 
         } catch (Exception e) {
             Log.e(TAG, "예측 실패", e);
@@ -212,6 +181,7 @@ public class MainActivity extends AppCompatActivity {
     // ✅ tokenizer 결과가 있다고 가정한 placeholder 함수
     private int[] getTokenIdsFromTokenizer(String text) {
         // 실제 구현 시: tokenizer에서 받은 token id 배열을 반환해야 함
+        // 예시: 입력 길이를 128로 맞추고 패딩을 추가하는 등의 전처리가 필요할 수 있습니다.
         return new int[]{101, 1234, 5678, 102}; // [CLS] ... [SEP] 예시
     }
 
@@ -254,6 +224,16 @@ public class MainActivity extends AppCompatActivity {
             showPermissionDialog("접근성 권한 필요", "접근성 권한이 필요합니다.",
                     new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
     }
+
+    // --- 추가: onDestroy에서 모델 리소스 해제 ---
+    @Override
+    protected void onDestroy() {
+        if (modelManager != null) {
+            modelManager.close();
+        }
+        super.onDestroy();
+    }
+    // ------------------------------------
 
     private boolean checkAccessibilityPermission() {
         AccessibilityManager manager = (AccessibilityManager) getSystemService(Context.ACCESSIBILITY_SERVICE);

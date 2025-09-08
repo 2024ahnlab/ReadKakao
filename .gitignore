@@ -86,3 +86,6 @@ lint/tmp/
 
 private/
 .DS_Store
+
+# models
+.tflite
