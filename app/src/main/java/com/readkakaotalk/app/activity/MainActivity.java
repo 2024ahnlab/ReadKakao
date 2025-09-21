@@ -1,182 +1,284 @@
 package com.readkakaotalk.app.activity;
 
+import android.accessibilityservice.AccessibilityServiceInfo;
+import android.app.AlertDialog;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.os.Build;
 import android.os.Bundle;
-import android.text.TextUtils;
+import android.provider.Settings;
 import android.util.Log;
+import android.view.accessibility.AccessibilityManager;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.TextView;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.preference.PreferenceManager;
+import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.readkakaotalk.app.R;
 import com.readkakaotalk.app.model.OnnxModelManager;
+import com.readkakaotalk.app.service.MyAccessibilityService;
 import com.readkakaotalk.app.tokenizer.SpmEncoder;
-//import com.readkakaotalk.app.tokenizer.EncodedInput;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
 
-    // 설정 키
-    public static final String KEY_USE_EMOTION_MODEL = "use_emotion_model";
-    public static final String KEY_THRESHOLD = "fraud_threshold";
-
-    private OnnxModelManager model;
+    private OnnxModelManager fraudModel;
+    private OnnxModelManager emotionModel;
     private SharedPreferences prefs;
+    private BroadcastReceiver messageReceiver;
 
-    // UI
-    private EditText inputEditText;
-    private Button analyzeButton;
-    private TextView scoreText;
-    private TextView labelText;
+    // UI 컴포넌트
+    private TextView statusText;
+    private TextView fraudMessageText;
+    private Button settingsButton;
 
-    // 모델/레이블 파일명 (assets/)
-    private String modelAssetName;
-    private String labelMapAssetName;
-
-    // SentencePiece
+    private SpmEncoder spmEncoder;
     private static final String SPM_ASSET_NAME = "tokenizer_78b3253a26.model";
-    private String spmLocalPath; // getFilesDir() 아래 실제 파일 경로
-    private static final int DEFAULT_SEQ_LEN = 64; // 모델이 [1, 64]라면 64
+    private static final int DEFAULT_SEQ_LEN = 64;
+    private AlertDialog dialog = null;
 
-    // 기본값
-    private static final float DEFAULT_THRESHOLD = 0.6f;
+    private static final Map<String, Float> EMO_WEIGHT = new HashMap<String, Float>() {{
+        put("불평/불만", +0.20f); put("환영/호의", -0.20f); put("감동/감탄", -0.20f); put("지긋지긋", +0.50f);
+        put("고마움", -0.20f); put("슬픔", +0.20f); put("화남/분노", +0.50f); put("존경", -0.20f);
+        put("기대감", -0.10f); put("우쭐댐/무시함", +0.20f); put("안타까움/실망", +0.20f); put("비장함", 0.00f);
+        put("의심/불신", +0.40f); put("뿌듯함", -0.20f); put("편안/쾌적", -0.20f); put("신기함/관심", -0.10f);
+        put("아껴주는", -0.20f); put("부끄러움", 0.00f); put("공포/무서움", +0.60f); put("절망", +0.60f);
+        put("한심함", +0.40f); put("역겨움/징그러움", +0.60f); put("짜증", +0.50f); put("어이없음", +0.20f);
+        put("없음", 0.00f); put("패배/자기혐오", +0.60f); put("귀찮음", +0.20f); put("힘듦/지침", +0.30f);
+        put("즐거움/신남", -0.20f); put("깨달음", -0.10f); put("죄책감", +0.40f); put("증오/혐오", +0.60f);
+        put("흐뭇함(귀여움/예쁨)", -0.20f); put("당황/난처", +0.20f); put("경악", +0.60f); put("부담/안_내킴", +0.30f);
+        put("서러움", +0.30f); put("재미없음", +0.20f); put("불쌍함/연민", 0.00f); put("놀람", 0.00f);
+        put("행복", -0.20f); put("불안/걱정", +0.50f); put("기쁨", -0.20f); put("안심/신뢰", -0.20f);
+    }};
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main); // 레이아웃에 editTextMessage/buttonAnalyze/textViewScore/textViewLabel 있어야 함
+        setContentView(R.layout.activity_main);
 
-        // UI 바인딩
-        inputEditText = findViewById(R.id.editTextMessage);
-        analyzeButton = findViewById(R.id.buttonAnalyze);
-        scoreText = findViewById(R.id.textViewScore);
-        labelText = findViewById(R.id.textViewLabel);
+        prefs = getSharedPreferences("settings", MODE_PRIVATE);
 
-        prefs = PreferenceManager.getDefaultSharedPreferences(this);
-        pickModelFromSettings(this);
+        statusText = findViewById(R.id.statusText);
+        fraudMessageText = findViewById(R.id.fraudMessageText);
+        settingsButton = findViewById(R.id.settingsButton);
 
-        // tokenizer 모델을 내부 저장소로 복사
-        spmLocalPath = copyTokenizerToFiles();
+        settingsButton.setOnClickListener(v -> {
+            Intent intent = new Intent(this, SettingsActivity.class);
+            startActivity(intent);
+        });
 
         try {
-            model = new OnnxModelManager(
-                    this,
-                    modelAssetName,
-                    labelMapAssetName
-            );
-            Log.i(TAG, "ONNX model loaded: " + modelAssetName);
+            String spmLocalPath = copyAssetToFile(SPM_ASSET_NAME);
+            spmEncoder = new SpmEncoder(spmLocalPath, DEFAULT_SEQ_LEN);
+            fraudModel = new OnnxModelManager(this, "distilkobert_sc.int8.onnx", "label_map.json");
+            emotionModel = new OnnxModelManager(this, "distilkobert_emotion_sc.int8.onnx", "label_map_emotion.json");
+            Log.i(TAG, "ONNX models & tokenizer loaded successfully.");
         } catch (Exception e) {
             Log.e(TAG, "Failed to load ONNX model", e);
-            showResult("load error", "model load failed");
-            return;
+            statusText.setText("모델 로딩 실패");
         }
 
-        analyzeButton.setOnClickListener(v -> {
-            String text = inputEditText.getText().toString();
-            if (TextUtils.isEmpty(text)) {
-                showResult("0.0", "EMPTY");
-                return;
+        messageReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String text = intent.getStringExtra(MyAccessibilityService.EXTRA_TEXT);
+                if (text != null && !text.isEmpty()) {
+                    Log.d(TAG, "메시지 수신: " + text);
+                    analyze(text.trim());
+                }
             }
-            analyze(text);
-        });
+        };
+        LocalBroadcastManager.getInstance(this).registerReceiver(messageReceiver,
+                new IntentFilter(MyAccessibilityService.ACTION_NOTIFICATION_BROADCAST));
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 100);
+        }
+
+        handleIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        handleIntent(intent);
+    }
+
+    private void handleIntent(Intent intent) {
+        if (intent != null && intent.hasExtra("suspicious_message")) {
+            Log.d(TAG, "알림 클릭으로 실행됨. UI를 업데이트합니다.");
+            String message = intent.getStringExtra("suspicious_message");
+            float finalScore = intent.getFloatExtra("final_score", 0f);
+            updateUiWithDetails(message, finalScore, true);
+        } else {
+            updateUiWithDetails(null, 0, false);
+        }
     }
 
     private void analyze(String text) {
         try {
-            OnnxModelManager.Prediction p;
+            float fraudThreshold = prefs.getFloat("fraud_threshold", 0.7f);
 
-            // 문자열 입력 가능한 모델이면 그대로 호출
-            try {
-                p = model.predictText(text);
-            } catch (IllegalStateException notString) {
-                // 정수 입력 모델인 경우: SentencePiece로 전처리
-                if (spmLocalPath == null) {
-                    Log.e(TAG, "SentencePiece model not available");
-                    showResult("0.0", "SPM MISSING");
-                    return;
-                }
-                SpmEncoder encoder = new SpmEncoder(spmLocalPath, DEFAULT_SEQ_LEN);
-                SpmEncoder.EncodedInput enc = encoder.encode(text);
-                p = model.predictIds(enc.inputIds, enc.attentionMask);
+            OnnxModelManager.Prediction pFraud = runPrediction(fraudModel, text, spmEncoder);
+            OnnxModelManager.Prediction pEmotion = runPrediction(emotionModel, text, spmEncoder);
+
+            float fraudScore = takeFraudScore(pFraud);
+            float emotionWeight = emotionSignedWeightStrict(pEmotion.label);
+
+            float finalScore = fraudScore + emotionWeight;
+            finalScore = Math.max(0.0f, Math.min(1.0f, finalScore));
+
+            boolean isAlert = finalScore >= fraudThreshold;
+
+            Log.d(TAG, String.format("Score(%.3f) | Fraud(%.3f) | Emotion(%s, %.3f) | Alert(%b)",
+                    finalScore, fraudScore, pEmotion.label, emotionWeight, isAlert));
+
+            updateUiWithDetails(text, finalScore, isAlert);
+
+            if (isAlert) {
+                showAlert(text, finalScore);
             }
-
-            // 사기탐지(2클래스 가정)일 때 index 1 확률을 threshold 비교
-            float threshold = prefs.getFloat(KEY_THRESHOLD, DEFAULT_THRESHOLD);
-            float fraudScore = takeFraudScore(p);
-            boolean isFraud = fraudScore >= threshold;
-
-            scoreText.setText(String.format("score: %.4f (th=%.3f)", fraudScore, threshold));
-            labelText.setText(p.label + (isFraud ? "  [ALERT]" : ""));
-
-            Log.d(TAG, "pred index=" + p.index + " label=" + p.label + " score=" + fraudScore);
         } catch (Exception e) {
             Log.e(TAG, "analyze failed", e);
-            showResult("error", e.getClass().getSimpleName());
+            statusText.setText("분석 오류");
         }
     }
 
-    private void pickModelFromSettings(Context ctx) {
-        boolean useEmotion = prefs.getBoolean(KEY_USE_EMOTION_MODEL, false);
-        if (useEmotion) {
-            // 감정 분류
-            modelAssetName = "distilkobert_emotion_sc.int8.onnx";
-            labelMapAssetName = "label_map_emotion.json";
+    private void updateUiWithDetails(String message, float finalScore, boolean isAlert) {
+        if (isAlert) {
+            fraudMessageText.setText("\"" + message + "\"");
+            statusText.setText("위험 (" + (int)(finalScore * 100) + "%)");
+            statusText.setTextColor(Color.parseColor("#CC0000"));
         } else {
-            // 이진 사기탐지
-            modelAssetName = "distilkobert_sc.int8.onnx";
-            labelMapAssetName = "label_map.json";
+            fraudMessageText.setText("(최근 분석된 의심 메시지 없음)");
+            statusText.setText("안전");
+            statusText.setTextColor(Color.parseColor("#22A500"));
         }
-        // assets/ 에 위 파일들이 있어야 함
     }
 
-    private void showResult(String score, String label) {
-        scoreText.setText(score);
-        labelText.setText(label);
+    private void showAlert(String message, float finalScore) {
+        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel("fraud_alert", "Fraud Alerts", NotificationManager.IMPORTANCE_HIGH);
+            manager.createNotificationChannel(channel);
+        }
+
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        intent.putExtra("suspicious_message", message);
+        intent.putExtra("final_score", finalScore);
+
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "fraud_alert")
+                .setSmallIcon(R.drawable.ic_warning)
+                .setContentTitle("사기 의심 메시지가 감지되었습니다!")
+                .setContentText("메시지: \"" + message + "\"")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent);
+        manager.notify(1, builder.build());
     }
 
-    // 이진 사기탐지 모델일 때: 보통 index 1이 "fraud" 라벨이라는 전제
+    private OnnxModelManager.Prediction runPrediction(OnnxModelManager model, String text, SpmEncoder encoder) throws Exception {
+        try {
+            return model.predictText(text);
+        } catch (IllegalStateException notString) {
+            if (encoder == null) throw new IOException("SpmEncoder is required but not available.");
+            SpmEncoder.EncodedInput enc = encoder.encode(text);
+            return model.predictIds(enc.inputIds, enc.attentionMask);
+        }
+    }
+
+    private float emotionSignedWeightStrict(String label) {
+        if (label == null) return 0f;
+        Float w = EMO_WEIGHT.get(label);
+        return (w != null) ? w : 0f;
+    }
+
     private float takeFraudScore(OnnxModelManager.Prediction p) {
-        if (p.probs == null || p.probs.length == 0) return 0f;
-        if (p.probs.length == 2) {
-            return p.probs[1]; // [0]=normal, [1]=fraud 가정
-        } else {
-            return p.probs[p.index];
-        }
+        if (p.probs == null || p.probs.length < 2) return 0f;
+        return p.probs[1];
     }
 
-    // assets/의 tokenizer 모델을 내부 저장소로 복사하고 절대경로를 반환
-    private String copyTokenizerToFiles() {
-        File outFile = new File(getFilesDir(), SPM_ASSET_NAME);
-        if (!outFile.exists()) {
-            try (InputStream is = getAssets().open(SPM_ASSET_NAME);
-                 FileOutputStream fos = new FileOutputStream(outFile)) {
-                byte[] buf = new byte[8192];
-                int n;
-                while ((n = is.read(buf)) > 0) fos.write(buf, 0, n);
-                Log.i(TAG, "SentencePiece model copied to " + outFile.getAbsolutePath());
-            } catch (IOException e) {
-                Log.e(TAG, "Failed to copy tokenizer model", e);
-                return null;
-            }
+    private String copyAssetToFile(String assetName) throws IOException {
+        File outFile = new File(getFilesDir(), assetName);
+        if (outFile.exists()) return outFile.getAbsolutePath();
+        try (InputStream is = getAssets().open(assetName);
+             FileOutputStream fos = new FileOutputStream(outFile)) {
+            byte[] buf = new byte[8192]; int n;
+            while ((n = is.read(buf)) > 0) fos.write(buf, 0, n);
         }
         return outFile.getAbsolutePath();
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        if (dialog != null) dialog.dismiss();
+        if (!checkAccessibilityPermission()) {
+            showPermissionDialog("접근성 권한 필요", "메시지 내용을 읽기 위해 접근성 권한이 반드시 필요합니다.",
+                    new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+        }
+    }
+
+    private boolean checkAccessibilityPermission() {
+        AccessibilityManager manager = (AccessibilityManager) getSystemService(Context.ACCESSIBILITY_SERVICE);
+        List<AccessibilityServiceInfo> list = manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_GENERIC);
+        for (AccessibilityServiceInfo info : list) {
+            if (info.getResolveInfo().serviceInfo.packageName.equals(getPackageName())) return true;
+        }
+        return false;
+    }
+
+    private void showPermissionDialog(String title, String message, Intent settingIntent) {
+        if (dialog != null && dialog.isShowing()) return;
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(title).setMessage(message)
+                .setPositiveButton("설정으로 이동", (dialog, which) -> startActivity(settingIntent))
+                .setCancelable(false);
+        dialog = builder.create();
+        dialog.show();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (messageReceiver != null) {
+            LocalBroadcastManager.getInstance(this).unregisterReceiver(messageReceiver);
+        }
         try {
-            if (model != null) model.close();
+            if (fraudModel != null) fraudModel.close();
+            if (emotionModel != null) emotionModel.close();
         } catch (Exception ignored) {}
     }
 }

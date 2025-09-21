@@ -20,14 +20,14 @@ public class MyAccessibilityService extends AccessibilityService {
     public static final String ACTION_NOTIFICATION_BROADCAST = "MyAccessibilityService_LocalBroadcast";
     public static final String EXTRA_TEXT = "extra_text";
     private String lastSpeaker = null;
+    private String lastProcessedText = ""; // 마지막으로 처리한 텍스트 저장 변수
     public static final String TARGET_APP_PACKAGE = "com.kakao.talk";
-    // public static final String TARGET_APP_PACKAGE = "jp.naver.line.android";
+
     private static final java.util.Queue<String> recentMessages = new java.util.LinkedList<>();
     public static java.util.List<String> getRecentMessages(int count) {
         return new java.util.ArrayList<>(recentMessages);
     }
 
-    // 그리고 메시지 처리할 때 recentMessages에 추가
     private void addMessageToRecent(String message) {
         if (recentMessages.size() >= 5) {
             recentMessages.poll();
@@ -35,33 +35,20 @@ public class MyAccessibilityService extends AccessibilityService {
         recentMessages.offer(message);
     }
 
-    // 디버깅용: 노드와 모든 자식 노드의 정보를 재귀적으로 출력하는 함수
     private void printNodeHierarchy(AccessibilityNodeInfo node, String indent) {
         if (node == null) {
             return;
         }
-
-// 현재 노드의 정보 (클래스 이름, 텍스트, contentDescription) 출력
         String log = String.format("%s[%s] text: '%s', desc: '%s'",
                 indent,
                 node.getClassName(),
                 node.getText(),
                 node.getContentDescription());
         Log.d(TAG, log);
-
-// 모든 자식 노드에 대해 재귀적으로 함수 호출
         for (int i = 0; i < node.getChildCount(); i++) {
             printNodeHierarchy(node.getChild(i), indent + " ");
         }
     }
-
-    /**
-     * 접근성 이벤트 발생 시 호출됨
-     */
-
-// MyAccessibilityService.java
-
-// ... (클래스 선언, TAG, lastSpeaker 변수 등은 그대로 둡니다) ...
 
     @SuppressLint("ObsoleteSdkInt")
     @TargetApi(Build.VERSION_CODES.ICE_CREAM_SANDWICH)
@@ -78,16 +65,13 @@ public class MyAccessibilityService extends AccessibilityService {
         AccessibilityNodeInfo rootNode = getRootInActiveWindow();
         if (rootNode == null) return;
 
-// ================== [수정된 부분] ==================
         AccessibilityNodeInfo recyclerView = null;
 
-// 1. ID로 RecyclerView를 찾는 것을 우선 시도 (가장 정확)
         java.util.List<AccessibilityNodeInfo> listNodes = rootNode.findAccessibilityNodeInfosByViewId("com.kakao.talk:id/chat_log_list");
         if (listNodes != null && !listNodes.isEmpty()) {
             recyclerView = listNodes.get(0);
             Log.d(TAG, "Successfully found RecyclerView by ID.");
         } else {
-// 2. ID 찾기 실패 시, 이벤트 소스가 RecyclerView인지 확인 (대체 로직)
             Log.w(TAG, "Could not find RecyclerView by ID. Trying fallback with event source...");
             AccessibilityNodeInfo source = event.getSource();
             if (source != null && "androidx.recyclerview.widget.RecyclerView".equals(source.getClassName())) {
@@ -96,12 +80,10 @@ public class MyAccessibilityService extends AccessibilityService {
             }
         }
 
-// 두 방법 모두 실패하면 더 이상 진행하지 않음
         if (recyclerView == null) {
             Log.e(TAG, "Ultimately failed to find RecyclerView node. Aborting parse.");
             return;
         }
-// ================================================
 
         StringBuilder messagesToBroadcast = new StringBuilder();
 
@@ -112,12 +94,10 @@ public class MyAccessibilityService extends AccessibilityService {
             CharSequence name = null;
             CharSequence text = null;
 
-// CASE 1: 날짜 구분선
             if (node.getChildCount() == 1 && isChildButton(node, 0)) {
                 continue;
             }
 
-// CASE 2: 상대방의 첫 메시지 (이름 있음)
             if (node.getChildCount() >= 3 && isChildTextView(node, 1)) {
                 name = node.getChild(1).getText();
                 if (name != null) {
@@ -133,7 +113,6 @@ public class MyAccessibilityService extends AccessibilityService {
                     }
                 }
             }
-// CASE 3: '나'의 메시지 또는 상대방의 연속 메시지 (이름 없음)
             else if (node.getChildCount() == 1 && node.getChild(0) != null && "android.view.ViewGroup".equals(node.getChild(0).getClassName())) {
                 AccessibilityNodeInfo messageBubbleNode = node.getChild(0);
 
@@ -160,6 +139,15 @@ public class MyAccessibilityService extends AccessibilityService {
 
         String result = messagesToBroadcast.toString();
         if (!result.isEmpty()) {
+            // ================== [ 변경된 부분 시작 ] ==================
+            // 마지막으로 보낸 내용과 동일하다면, 다시 보내지 않고 함수를 종료합니다.
+            if (result.equals(lastProcessedText)) {
+                return;
+            }
+            // 마지막으로 보낸 내용을 현재 내용으로 업데이트합니다.
+            lastProcessedText = result;
+            // ================== [  변경된 부분 끝  ] ==================
+
             Log.e(TAG, "Captured Block:\n" + result);
             addMessageToRecent(result);
             Intent intent = new Intent(MyAccessibilityService.ACTION_NOTIFICATION_BROADCAST);
@@ -168,7 +156,6 @@ public class MyAccessibilityService extends AccessibilityService {
         }
     }
 
-    // 이미지 뷰를 재귀적으로 찾는 헬퍼 함수 추가
     private boolean findImageView(AccessibilityNodeInfo node) {
         if (node == null) return false;
         if ("android.widget.ImageView".equals(node.getClassName())) {
@@ -182,32 +169,24 @@ public class MyAccessibilityService extends AccessibilityService {
         return false;
     }
 
-// LocalBroadcastManager를 사용하도록 수정 권장
-// getApplicationContext().sendBroadcast(intent); -> LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
-
-    // 특정 노드 및 하위 노드에서 텍스트 수집
     private String getAllText(AccessibilityNodeInfo node) {
         if (node == null) return "";
         StringBuilder text = new StringBuilder();
-// TextView의 텍스트 또는 ContentDescription을 수집
         if ("android.widget.TextView".equals(node.getClassName())) {
             if (node.getText() != null) text.append(node.getText());
             else if (node.getContentDescription() != null) text.append(node.getContentDescription());
         }
-// 자식 노드를 재귀적으로 탐색하여 텍스트를 수집
         for (int i = 0; i < node.getChildCount(); i++) {
             text.append(getAllText(node.getChild(i)));
         }
         return text.toString();
     }
 
-    // 자식 노드 클래스 비교
     private boolean checkChildClass(AccessibilityNodeInfo node, int index, String className) {
         AccessibilityNodeInfo child = node.getChild(index);
         return child != null && className.equals(child.getClassName());
     }
 
-    // 자식 타입 확인 함수 모음
     private boolean isChildButton(AccessibilityNodeInfo node, int i) { return checkChildClass(node, i, "android.widget.Button"); }
     private boolean isChildTextView(AccessibilityNodeInfo node, int i) { return checkChildClass(node, i, "android.widget.TextView"); }
     private boolean isChildImageView(AccessibilityNodeInfo node, int i) { return checkChildClass(node, i, "android.widget.ImageView"); }
@@ -216,7 +195,6 @@ public class MyAccessibilityService extends AccessibilityService {
     private boolean isChildLinearLayout(AccessibilityNodeInfo node, int i) { return checkChildClass(node, i, "android.widget.LinearLayout"); }
     private boolean isChildRelativeLayout(AccessibilityNodeInfo node, int i) { return checkChildClass(node, i, "android.widget.RelativeLayout"); }
 
-    // 좌측 위치 기준으로 내가 보낸 메시지인지 확인
     private boolean isSelfMessage(AccessibilityNodeInfo node) {
         Rect rect = new Rect();
         node.getBoundsInScreen(rect);
@@ -230,6 +208,6 @@ public class MyAccessibilityService extends AccessibilityService {
 
     @Override
     public void onServiceConnected() {
-// 연결 시 설정 가능 (사용 안함)
+        // 연결 시 설정 가능 (사용 안함)
     }
 }

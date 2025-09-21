@@ -162,6 +162,22 @@ public class OnnxModelManager implements AutoCloseable {
         return new Prediction(label, probs, argmax);
     }
 
+//    private Prediction toPrediction(float[] probs) {
+//        int argmin = 0; // 가장 작은 값의 인덱스를 저장할 변수 (argmin)
+//        float lowestProb = probs[0]; // 현재까지 가장 작은 확률값
+//
+//        for (int i = 1; i < probs.length; i++) {
+//            // 만약 현재 확률이 이전에 찾은 가장 작은 확률보다 '작다면'
+//            if (probs[i] < lowestProb) {
+//                lowestProb = probs[i]; // 가장 작은 값을 갱신하고
+//                argmin = i;          // 해당 인덱스를 저장
+//            }
+//        }
+//        // 가장 확률이 낮은 감정의 라벨을 가져옴
+//        String label = id2label.getOrDefault(argmin, "UNK");
+//        return new Prediction(label, probs, argmin);
+//    }
+
     @Override public void close() throws OrtException {
         if (session != null) session.close();
         if (env != null) env.close();
