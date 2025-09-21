@@ -1,68 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background_light"
     android:orientation="vertical"
-    tools:context=".activity.SettingsActivity">
+    android:padding="16dp">
 
-    <com.google.android.material.appbar.AppBarLayout
+    <Switch
+        android:id="@+id/switchUseEmotion"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
-        <androidx.appcompat.widget.Toolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            app:title="설정"
-            app:titleTextColor="@color/textColorPrimary"
-            android:background="@color/colorPrimary"/>
-    </com.google.android.material.appbar.AppBarLayout>
+        android:layout_height="wrap_content"
+        android:text="감정 모델 사용" />
 
-    <ScrollView
+    <EditText
+        android:id="@+id/editThreshold"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="16dp">
+        android:layout_height="wrap_content"
+        android:hint="임계값 0.0 ~ 1.0"
+        android:inputType="numberDecimal"
+        android:layout_marginTop="12dp" />
 
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:cardCornerRadius="12dp"
-                app:cardElevation="8dp">
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="24dp">
-                    <TextView
-                        android:id="@+id/fraudText"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="사기 탐지 민감도: 70%"
-                        android:textColor="@color/textColorOnLight"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="값이 낮을수록 사기 메시지를 더 민감하게 탐지합니다."
-                        android:textSize="14sp"/>
-                    <SeekBar
-                        android:id="@+id/fraudThresholdSeekBar"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
-                        android:max="100"
-                        android:progress="70"/>
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-        </LinearLayout>
-    </ScrollView>
+    <Button
+        android:id="@+id/buttonSave"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="저장"
+        android:layout_marginTop="12dp" />
 </LinearLayout>

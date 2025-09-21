@@ -19,3 +19,5 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+-keep class ai.onnxruntime.** { *; }
+-keep class com.microsoft.onnxruntime.** { *; }  # 일부 배포본 네임스페이스

@@ -1,63 +1,46 @@
 package com.readkakaotalk.app.activity;
 
-import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.widget.SeekBar;
-import android.widget.TextView;
+import android.widget.CompoundButton;
+import android.widget.EditText;
+import android.widget.Switch;
+
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.Toolbar;
+import androidx.preference.PreferenceManager;
+
 import com.readkakaotalk.app.R;
 
 public class SettingsActivity extends AppCompatActivity {
 
-    private SeekBar fraudThresholdSeekBar;
-    private TextView fraudText;
-    private SharedPreferences prefs;
-
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_settings);
+        setContentView(R.layout.activity_settings); // TODO(id) 네 설정 레이아웃
 
-        // 툴바 설정 (뒤로가기 버튼)
-        Toolbar toolbar = findViewById(R.id.toolbar);
-        setSupportActionBar(toolbar);
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-            getSupportActionBar().setDisplayShowHomeEnabled(true);
-        }
-        toolbar.setNavigationOnClickListener(v -> onBackPressed());
+        final android.content.SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
 
-        prefs = getSharedPreferences("settings", MODE_PRIVATE);
+        // 감정 모델 사용 스위치
+        Switch useEmotionSwitch = findViewById(R.id.switchUseEmotion); // TODO(id)
+        boolean useEmotion = prefs.getBoolean(MainActivity.KEY_USE_EMOTION_MODEL, false);
+        useEmotionSwitch.setChecked(useEmotion);
+        useEmotionSwitch.setOnCheckedChangeListener((CompoundButton buttonView, boolean isChecked) ->
+                prefs.edit().putBoolean(MainActivity.KEY_USE_EMOTION_MODEL, isChecked).apply()
+        );
 
-        fraudThresholdSeekBar = findViewById(R.id.fraudThresholdSeekBar);
-        fraudText = findViewById(R.id.fraudText);
+        // 임계값 입력(사기탐지용)
+        EditText thresholdEdit = findViewById(R.id.editThreshold); // TODO(id)
+        float th = prefs.getFloat(MainActivity.KEY_THRESHOLD, 0.6f);
+        thresholdEdit.setText(String.valueOf(th));
 
-        // 저장된 값 불러오기 (없으면 기본값 70%)
-        float fraudThreshold = prefs.getFloat("fraud_threshold", 0.7f);
-        initSeekBar(fraudThresholdSeekBar, fraudText, "사기 탐지 민감도", "fraud_threshold", fraudThreshold);
-    }
-
-    private void initSeekBar(SeekBar bar, TextView label, String labelPrefix, String key, float initValue) {
-        int initialProgress = (int)(initValue * 100);
-        bar.setProgress(initialProgress);
-        label.setText(labelPrefix + ": " + initialProgress + "%");
-
-        bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                // 실시간으로 텍스트 업데이트
-                label.setText(labelPrefix + ": " + progress + "%");
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {}
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-                // 터치가 끝나면 값 저장
-                float val = seekBar.getProgress() / 100f;
-                prefs.edit().putFloat(key, val).apply();
+        findViewById(R.id.buttonSave).setOnClickListener(v -> { // TODO(id)
+            try {
+                float newTh = Float.parseFloat(thresholdEdit.getText().toString().trim());
+                prefs.edit().putFloat(MainActivity.KEY_THRESHOLD, newTh).apply();
+                finish();
+            } catch (Exception e) {
+                // 잘못된 값이면 무시하거나 에러 표시
+                thresholdEdit.setError("0.0 ~ 1.0");
             }
         });
     }

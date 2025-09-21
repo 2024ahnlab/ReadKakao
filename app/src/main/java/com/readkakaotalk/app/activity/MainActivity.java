@@ -1,255 +1,177 @@
 package com.readkakaotalk.app.activity;
 
-import android.accessibilityservice.AccessibilityServiceInfo;
-import android.app.AlertDialog;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
-import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
-import android.os.Build;
 import android.os.Bundle;
-import android.provider.Settings;
+import android.text.TextUtils;
 import android.util.Log;
-import android.view.accessibility.AccessibilityManager;
-import android.widget.ImageButton;
+import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
-import android.widget.Toast;
 
-import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.app.NotificationCompat;
-import androidx.core.content.ContextCompat;
-import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+import androidx.preference.PreferenceManager;
 
 import com.readkakaotalk.app.R;
-import com.readkakaotalk.app.model.TfLiteModelManager;
-import com.readkakaotalk.app.service.MyAccessibilityService;
-
-import java.util.List;
+import com.readkakaotalk.app.model.OnnxModelManager;
 
 public class MainActivity extends AppCompatActivity {
-
     private static final String TAG = "MainActivity";
-    private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 100;
-    public static final String EXTRA_IS_DANGER = "is_danger";
-    public static final String EXTRA_DANGER_MESSAGE = "danger_message";
 
-    private AlertDialog dialog = null;
-    private TextView statusText;
-    private TextView fraudMessageText;
-    private ImageButton settingsButton;
-    private TfLiteModelManager modelManager;
+    // 설정 키
+    public static final String KEY_USE_EMOTION_MODEL = "use_emotion_model";
+    public static final String KEY_THRESHOLD = "fraud_threshold";
+
+    private OnnxModelManager model;
     private SharedPreferences prefs;
-    private BroadcastReceiver messageReceiver;
+
+    // UI
+    private EditText inputEditText;
+    private Button analyzeButton;
+    private TextView scoreText;
+    private TextView labelText;
+
+    // 모델/레이블 파일명 (assets/)
+    private String modelAssetName;
+    private String labelMapAssetName;
+
+    // 기본값
+    private static final float DEFAULT_THRESHOLD = 0.6f; // 필요시 조정
+    private static final int DEFAULT_SEQ_LEN = 64;
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-        Log.d(TAG, "MainActivity onCreate");
+        setContentView(R.layout.activity_main); // TODO(id) 네 레이아웃으로 유지
 
-        prefs = getSharedPreferences("settings", MODE_PRIVATE);
-        statusText = findViewById(R.id.statusText);
-        fraudMessageText = findViewById(R.id.fraudMessageText);
-        settingsButton = findViewById(R.id.settingsButton);
+        // UI 바인딩
+        inputEditText = findViewById(R.id.editTextMessage);   // TODO(id)
+        analyzeButton = findViewById(R.id.buttonAnalyze);     // TODO(id)
+        scoreText = findViewById(R.id.textViewScore);         // TODO(id)
+        labelText = findViewById(R.id.textViewLabel);         // TODO(id)
 
-        settingsButton.setOnClickListener(v -> {
-            Intent intent = new Intent(this, SettingsActivity.class);
-            startActivity(intent);
-        });
+        prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        pickModelFromSettings(this);
 
-        modelManager = TfLiteModelManager.getInstance(getApplicationContext());
-        modelManager.initialize(getApplicationContext());
+        try {
+            model = new OnnxModelManager(
+                    this,
+                    modelAssetName,
+                    labelMapAssetName
+            );
+            Log.i(TAG, "ONNX model loaded: " + modelAssetName);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to load ONNX model", e);
+            showResult("load error", "model load failed");
+            return;
+        }
 
-        messageReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                String text = intent.getStringExtra(MyAccessibilityService.EXTRA_TEXT);
-                Log.d("MainActivity", "Broadcast received! Text: \n" + text);
-                if (text != null && !text.isEmpty()) {
-                    analyze(text);
-                }
+        analyzeButton.setOnClickListener(v -> {
+            String text = inputEditText.getText().toString();
+            if (TextUtils.isEmpty(text)) {
+                showResult("0.0", "EMPTY");
+                return;
             }
-        };
-
-        // [수정] onCreate에서 LocalBroadcastManager를 통해 Receiver를 등록합니다.
-        IntentFilter filter = new IntentFilter(MyAccessibilityService.ACTION_NOTIFICATION_BROADCAST);
-        LocalBroadcastManager.getInstance(this).registerReceiver(messageReceiver, filter);
-
-        handleIntent(getIntent());
+            analyze(text);
+        });
     }
 
-    // [수정] onDestroy에서 Receiver를 해제합니다.
+    private void analyze(String text) {
+        try {
+            OnnxModelManager.Prediction p;
+
+            // 먼저 문자열 입력 가능한 모델이면 그대로 호출
+            try {
+                p = model.predictText(text);
+            } catch (IllegalStateException notString) {
+                // 정수 입력 모델인 경우: 간이 토크나이즈(정식 SentencePiece 붙이기 전 임시)
+                int[] ids = tokenizeFallback(text, DEFAULT_SEQ_LEN);
+                int[] mask = buildAttentionMask(ids);
+                p = model.predictIds(ids, mask);
+            }
+
+            // 사기탐지(2클래스 가정)일 때는 index 1 확률을 threshold 비교
+            float threshold = prefs.getFloat(KEY_THRESHOLD, DEFAULT_THRESHOLD);
+            float fraudScore = takeFraudScore(p);
+            boolean isFraud = fraudScore >= threshold;
+
+            scoreText.setText(String.format("score: %.4f (th=%.3f)", fraudScore, threshold));
+            labelText.setText(p.label + (isFraud ? "  [ALERT]" : ""));
+
+            Log.d(TAG, "pred index=" + p.index + " label=" + p.label + " score=" + fraudScore);
+        } catch (Exception e) {
+            Log.e(TAG, "analyze failed", e);
+            showResult("error", e.getClass().getSimpleName());
+        }
+    }
+
+    private void pickModelFromSettings(Context ctx) {
+        boolean useEmotion = prefs.getBoolean(KEY_USE_EMOTION_MODEL, false);
+        if (useEmotion) {
+            // 감정 44클래스
+            modelAssetName = "distilkobert_emotion_sc.int8.onnx";
+            labelMapAssetName = "label_map_emotion.json";
+        } else {
+            // 이진 사기탐지
+            modelAssetName = "distilkobert_sc.int8.onnx";
+            labelMapAssetName = "label_map.json";
+        }
+        // assets/ 에 위 파일들이 있어야 함
+    }
+
+    private void showResult(String score, String label) {
+        scoreText.setText(score);
+        labelText.setText(label);
+    }
+
+    // 이진 사기탐지 모델일 때: 보통 index 1이 "fraud" 라벨이라는 전제
+    private float takeFraudScore(OnnxModelManager.Prediction p) {
+        if (p.probs == null || p.probs.length == 0) return 0f;
+        // 감정 모델일 때는 단일 score 개념이 없으므로 최고 확률을 표시하는 정도로 둠
+        if (p.probs.length == 2) {
+            return p.probs[1]; // [0]=normal, [1]=fraud 로 가정
+        } else {
+            return p.probs[p.index];
+        }
+    }
+
+    // ===== 임시 토크나이저(배포 전 SentencePiece JNI로 교체할 것) =====
+    private static int[] tokenizeFallback(String text, int seqLen) {
+        final int CLS = 101, SEP = 102, PAD = 0;
+        int[] out = new int[seqLen];
+        java.util.Arrays.fill(out, PAD);
+
+        String[] toks = text.trim().split("\\s+");
+        int pos = 0;
+        out[pos++] = CLS;
+        for (String tk : toks) {
+            if (pos >= seqLen - 1) break;
+            out[pos++] = pseudoVocabHash(tk);
+        }
+        if (pos < seqLen) {
+            out[pos] = SEP;
+        } else {
+            out[seqLen - 1] = SEP;
+        }
+        return out;
+    }
+
+    private static int[] buildAttentionMask(int[] ids) {
+        int[] m = new int[ids.length];
+        for (int i = 0; i < ids.length; i++) m[i] = (ids[i] == 0 ? 0 : 1);
+        return m;
+    }
+
+    private static int pseudoVocabHash(String t) {
+        return (Math.abs(t.hashCode()) % 30000) + 1000;
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(messageReceiver);
-        Log.d(TAG, "MainActivity onDestroy");
-    }
-
-    // --- (이하 다른 메서드들은 변경 사항 없음) ---
-
-    @Override
-    protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        setIntent(intent);
-        handleIntent(intent);
-    }
-
-    private void handleIntent(Intent intent) {
-        if (intent != null && intent.getBooleanExtra(EXTRA_IS_DANGER, false)) {
-            String message = intent.getStringExtra(EXTRA_DANGER_MESSAGE);
-            updateUiForDanger(message);
-        } else if (Intent.ACTION_MAIN.equals(intent.getAction())) {
-            updateInitialUI();
-        }
-    }
-
-    private void updateInitialUI() {
-        statusText.setText("안전");
-        statusText.setTextColor(ContextCompat.getColor(this, R.color.status_safe));
-        fraudMessageText.setText("(분석된 위험 메시지가 없습니다)");
-    }
-
-    private void updateUiForDanger(String message) {
-        statusText.setText("위험");
-        statusText.setTextColor(ContextCompat.getColor(this, R.color.status_danger));
-        fraudMessageText.setText(message);
-    }
-
-    private void analyze(String message) {
-        if (!modelManager.isInitialized()) {
-            Log.w(TAG, "analyze 호출 시 모델이 초기화되지 않아 재초기화를 시도합니다.");
-            modelManager.initialize(getApplicationContext());
-            if (!modelManager.isInitialized()) {
-                Log.e(TAG, "모델 재초기화 실패. 분석을 중단합니다.");
-                return;
-            }
-        }
-
         try {
-            int[][] inputIds = new int[1][64];
-            int[][] attentionMask = new int[1][64];
-            // TODO: 여기에 실제 토크나이저 코드를 적용해야 합니다.
-
-            float[][] output = modelManager.predict(inputIds, attentionMask);
-            if (output == null) return;
-
-            float[] scores = output[0];
-            float fraudScore = scores[1];
-            Log.d(TAG, "분석 결과: [사기아님:" + scores[0] + ", 사기:" + fraudScore + "]");
-            float fraudThreshold = prefs.getFloat("fraud_threshold", 0.7f);
-
-            if (fraudScore > fraudThreshold) {
-                updateUiForDanger(message);
-                showAlert(message);
-            } else {
-                updateInitialUI();
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "분석 중 오류 발생", e);
-        }
-    }
-
-    private void showAlert(String message) {
-        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        String channelId = "fraud_alert_channel";
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(channelId, "사기 의심 경고", NotificationManager.IMPORTANCE_HIGH);
-            manager.createNotificationChannel(channel);
-        }
-
-        Intent intent = new Intent(this, MainActivity.class);
-        intent.setAction("SHOW_DANGER");
-        intent.putExtra(EXTRA_IS_DANGER, true);
-        intent.putExtra(EXTRA_DANGER_MESSAGE, message);
-        intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-
-        PendingIntent pendingIntent = PendingIntent.getActivity(
-                this, 1, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, channelId)
-                .setSmallIcon(R.drawable.ic_warning)
-                .setContentTitle("피싱 위험 감지!")
-                .setContentText("사기 의심 메시지가 도착했습니다.")
-                .setStyle(new NotificationCompat.BigTextStyle().bigText("사기 의심 메시지가 도착했습니다: \"" + message + "\""))
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true)
-                .setContentIntent(pendingIntent);
-
-        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-            manager.notify(1, builder.build());
-        }
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        if (dialog != null && dialog.isShowing()) dialog.dismiss();
-        if (!checkAccessibilityPermission()) {
-            showPermissionDialog("접근성 권한 필요", "피싱 메시지를 감지하기 위해 접근성 권한이 반드시 필요합니다.", new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
-        } else {
-            checkAndRequestNotificationPermission();
-        }
-
-        // [수정] onResume에서 등록 로직 삭제
-
-        handleIntent(getIntent());
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        // [수정] onPause에서 해제 로직 삭제
-    }
-
-    private void checkAndRequestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this,
-                        new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
-                        NOTIFICATION_PERMISSION_REQUEST_CODE);
-            }
-        }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "알림 권한이 허용되었습니다.", Toast.LENGTH_SHORT).show();
-            } else {
-                Toast.makeText(this, "알림 권한이 거부되어 위험 경고를 받으실 수 없습니다.", Toast.LENGTH_LONG).show();
-            }
-        }
-    }
-
-    private boolean checkAccessibilityPermission() {
-        AccessibilityManager manager = (AccessibilityManager) getSystemService(Context.ACCESSIBILITY_SERVICE);
-        if (manager == null) return false;
-        List<AccessibilityServiceInfo> list = manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_GENERIC);
-        if (list == null) return false;
-        for (AccessibilityServiceInfo info : list) {
-            if (info.getResolveInfo().serviceInfo.packageName.equals(getPackageName())) return true;
-        }
-        return false;
-    }
-
-    private void showPermissionDialog(String title, String message, Intent settingIntent) {
-        if (dialog != null && dialog.isShowing()) return;
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle(title).setMessage(message)
-                .setPositiveButton("설정으로 이동", (d, which) -> startActivity(settingIntent))
-                .setCancelable(false);
-        dialog = builder.create();
-        dialog.show();
+            if (model != null) model.close();
+        } catch (Exception ignored) {}
     }
 }
