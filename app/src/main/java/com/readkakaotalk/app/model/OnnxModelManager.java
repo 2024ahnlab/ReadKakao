@@ -10,14 +10,12 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.nio.IntBuffer;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.Map;
 
-import ai.onnxruntime.OnnxJavaType;
 import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OnnxValue;
 import ai.onnxruntime.OrtEnvironment;
@@ -25,6 +23,7 @@ import ai.onnxruntime.OrtException;
 import ai.onnxruntime.OrtSession;
 import ai.onnxruntime.TensorInfo;
 import ai.onnxruntime.NodeInfo;
+import ai.onnxruntime.OnnxJavaType;
 
 public class OnnxModelManager implements AutoCloseable {
     private final OrtEnvironment env;
@@ -39,7 +38,6 @@ public class OnnxModelManager implements AutoCloseable {
                             String labelMapAssetName) throws IOException, OrtException {
         env = OrtEnvironment.getEnvironment();
         try (OrtSession.SessionOptions opt = new OrtSession.SessionOptions()) {
-            // opt.registerOrtExtensions(); // extensions AAR 씀 + 필요할 때만 사용
             session = env.createSession(readAssetToBytes(ctx, onnxAssetName), opt);
         }
         loadLabelMap(ctx, labelMapAssetName);
@@ -52,7 +50,7 @@ public class OnnxModelManager implements AutoCloseable {
             TensorInfo ti = (TensorInfo) ni.getInfo();
             if (ti.type == OnnxJavaType.STRING) {
                 expectsStringInput = true;
-            } else if (ti.type == OnnxJavaType.INT32) {
+            } else if (ti.type == OnnxJavaType.INT32 || ti.type == OnnxJavaType.INT64) {
                 long[] shape = ti.getShape();
                 if (shape.length >= 2 && shape[1] > 0) {
                     seqLen = (int) shape[1]; // [1, seq_len]
@@ -89,7 +87,7 @@ public class OnnxModelManager implements AutoCloseable {
         OnnxTensor textTensor = OnnxTensor.createTensor(env, new String[]{ text });
 
         Map<String, OnnxTensor> feeds = new LinkedHashMap<>();
-        String inputName = firstInputName();     // ← 입력명 가져오기
+        String inputName = firstInputName();
         feeds.put(inputName, textTensor);
 
         try (OrtSession.Result result = session.run(feeds)) {
@@ -106,7 +104,12 @@ public class OnnxModelManager implements AutoCloseable {
         if (inputIds.length != seqLen) throw new IllegalArgumentException("seq_len mismatch");
 
         long[] shape = new long[]{1, seqLen};
-        OnnxTensor idsTensor = OnnxTensor.createTensor(env, IntBuffer.wrap(inputIds), shape);
+
+        // int[] → long[] 변환
+        long[] ids64 = Arrays.stream(inputIds).asLongStream().toArray();
+        long[][] ids2d = new long[1][seqLen];
+        System.arraycopy(ids64, 0, ids2d[0], 0, seqLen);
+        OnnxTensor idsTensor = OnnxTensor.createTensor(env, ids2d);
 
         Map<String, OnnxTensor> feeds = new LinkedHashMap<>();
         Iterator<String> it = session.getInputInfo().keySet().iterator();
@@ -116,7 +119,10 @@ public class OnnxModelManager implements AutoCloseable {
         OnnxTensor maskTensor = null;
         if (hasAttentionMask) {
             int[] mask = (attentionMaskOpt != null) ? attentionMaskOpt : ones(seqLen);
-            maskTensor = OnnxTensor.createTensor(env, IntBuffer.wrap(mask), shape);
+            long[] mask64 = Arrays.stream(mask).asLongStream().toArray();
+            long[][] mask2d = new long[1][seqLen];
+            System.arraycopy(mask64, 0, mask2d[0], 0, seqLen);
+            maskTensor = OnnxTensor.createTensor(env, mask2d);
             String maskName = it.next();
             feeds.put(maskName, maskTensor);
         }
@@ -130,22 +136,28 @@ public class OnnxModelManager implements AutoCloseable {
         }
     }
 
-    private String firstInputName() throws IOException, OrtException {
+    private String firstInputName() throws ai.onnxruntime.OrtException {
         return session.getInputInfo().keySet().iterator().next();
     }
 
-    private static int[] ones(int n) { int[] a = new int[n]; Arrays.fill(a, 1); return a; }
+    private static int[] ones(int n) {
+        int[] a = new int[n];
+        Arrays.fill(a, 1);
+        return a;
+    }
 
     private float[] extractFirstRow(OrtSession.Result result) throws OrtException {
-        // 출력 하나, [1, num_labels] 가정
         OnnxValue v = result.get(0);
         float[][] arr = (float[][]) ((OnnxTensor) v).getValue();
         return arr[0];
     }
 
     private Prediction toPrediction(float[] probs) {
-        int argmax = 0; float best = probs[0];
-        for (int i = 1; i < probs.length; i++) if (probs[i] > best) { best = probs[i]; argmax = i; }
+        int argmax = 0;
+        float best = probs[0];
+        for (int i = 1; i < probs.length; i++) {
+            if (probs[i] > best) { best = probs[i]; argmax = i; }
+        }
         String label = id2label.getOrDefault(argmax, "UNK");
         return new Prediction(label, probs, argmax);
     }
@@ -160,7 +172,9 @@ public class OnnxModelManager implements AutoCloseable {
         public final float[] probs;
         public final int index;
         public Prediction(String label, float[] probs, int index) {
-            this.label = label; this.probs = probs; this.index = index;
+            this.label = label;
+            this.probs = probs;
+            this.index = index;
         }
     }
 }
