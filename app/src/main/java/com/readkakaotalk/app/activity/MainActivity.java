@@ -60,17 +60,30 @@ public class MainActivity extends AppCompatActivity {
     private AlertDialog dialog = null;
 
     private static final Map<String, Float> EMO_WEIGHT = new HashMap<String, Float>() {{
-        put("불평/불만", +0.20f); put("환영/호의", -0.20f); put("감동/감탄", -0.20f); put("지긋지긋", +0.50f);
-        put("고마움", -0.20f); put("슬픔", +0.20f); put("화남/분노", +0.50f); put("존경", -0.20f);
-        put("기대감", -0.10f); put("우쭐댐/무시함", +0.20f); put("안타까움/실망", +0.20f); put("비장함", 0.00f);
-        put("의심/불신", +0.40f); put("뿌듯함", -0.20f); put("편안/쾌적", -0.20f); put("신기함/관심", -0.10f);
-        put("아껴주는", -0.20f); put("부끄러움", 0.00f); put("공포/무서움", +0.60f); put("절망", +0.60f);
-        put("한심함", +0.40f); put("역겨움/징그러움", +0.60f); put("짜증", +0.50f); put("어이없음", +0.20f);
-        put("없음", 0.00f); put("패배/자기혐오", +0.60f); put("귀찮음", +0.20f); put("힘듦/지침", +0.30f);
-        put("즐거움/신남", -0.20f); put("깨달음", -0.10f); put("죄책감", +0.40f); put("증오/혐오", +0.60f);
-        put("흐뭇함(귀여움/예쁨)", -0.20f); put("당황/난처", +0.20f); put("경악", +0.60f); put("부담/안_내킴", +0.30f);
-        put("서러움", +0.30f); put("재미없음", +0.20f); put("불쌍함/연민", 0.00f); put("놀람", 0.00f);
-        put("행복", -0.20f); put("불안/걱정", +0.50f); put("기쁨", -0.20f); put("안심/신뢰", -0.20f);
+        // 중간 긍정 (-0.20)
+        put("환영/호의", -0.20f); put("감동/감탄", -0.20f); put("고마움", -0.20f); put("존경", -0.20f);
+        put("뿌듯함", -0.20f); put("편안/쾌적", -0.20f); put("아껴주는", -0.20f); put("즐거움/신남", -0.20f);
+        put("흐뭇함(귀여움/예쁨)", -0.20f); put("행복", -0.20f); put("기쁨", -0.20f); put("안심/신뢰", -0.20f);
+
+        // 약한 긍정 (-0.10)
+        put("기대감", -0.10f); put("신기함/관심", -0.10f); put("깨달음", -0.10f);
+
+        // 중립 (0.00)
+        put("비장함", 0.00f); put("없음", 0.00f); put("우쭐댐/무시함", 0.00f); put("귀찮음", 0.00f);
+        put("재미없음", 0.00f); put("한심함", 0.00f); put("지긋지긋", 0.00f); put("역겨움/징그러움", 0.00f);
+        put("패배/자기혐오", 0.00f);
+
+        // 약한 부정 (+0.10)
+        put("부끄러움", +0.10f); put("놀람", +0.10f); put("불평/불만", +0.10f); put("슬픔", +0.10f);
+        put("안타까움/실망", +0.10f); put("어이없음", +0.10f); put("서러움", +0.10f); put("힘듦/지침", +0.10f);
+
+        // 중간 부정 (+0.20)
+        put("당황/난처", +0.20f); put("부담/안_내킴", +0.20f); put("불쌍함/연민", +0.20f); put("경악", +0.20f);
+        put("증오/혐오", +0.20f);
+
+        // 강한 부정 (+0.30)
+        put("의심/불신", +0.30f); put("죄책감", +0.30f); put("화남/분노", +0.30f); put("짜증", +0.30f);
+        put("불안/걱정", +0.30f); put("공포/무서움", +0.30f); put("절망", +0.30f);
     }};
 
     @Override
@@ -91,9 +104,19 @@ public class MainActivity extends AppCompatActivity {
 
         try {
             String spmLocalPath = copyAssetToFile(SPM_ASSET_NAME);
-            spmEncoder = new SpmEncoder(spmLocalPath, DEFAULT_SEQ_LEN);
+
+            // 1) 모델 먼저 생성
             fraudModel = new OnnxModelManager(this, "distilkobert_sc.int8.onnx", "label_map.json");
             emotionModel = new OnnxModelManager(this, "distilkobert_emotion_sc.int8.onnx", "label_map_emotion.json");
+
+            // 2) 동적 모델이라면 원하는 길이로 강제 지정 (예: 128)
+            final int SEQ_LEN = 128;
+            fraudModel.setSeqLen(SEQ_LEN);
+            emotionModel.setSeqLen(SEQ_LEN);
+
+            // 3) SpmEncoder도 같은 길이로 생성
+            spmEncoder = new SpmEncoder(spmLocalPath, fraudModel.getSeqLen());
+
             Log.i(TAG, "ONNX models & tokenizer loaded successfully.");
         } catch (Exception e) {
             Log.e(TAG, "Failed to load ONNX model", e);
@@ -205,13 +228,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private OnnxModelManager.Prediction runPrediction(OnnxModelManager model, String text, SpmEncoder encoder) throws Exception {
-        try {
-            return model.predictText(text);
-        } catch (IllegalStateException notString) {
-            if (encoder == null) throw new IOException("SpmEncoder is required but not available.");
-            SpmEncoder.EncodedInput enc = encoder.encode(text);
-            return model.predictIds(enc.inputIds, enc.attentionMask);
-        }
+        if (encoder == null) throw new IOException("SpmEncoder is required but not available.");
+        SpmEncoder.EncodedInput enc = encoder.encode(text);
+        return model.predictIds(enc.inputIds, enc.attentionMask);
     }
 
     private float emotionSignedWeightStrict(String label) {

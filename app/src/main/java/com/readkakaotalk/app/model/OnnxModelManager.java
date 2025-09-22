@@ -28,10 +28,14 @@ import ai.onnxruntime.OnnxJavaType;
 public class OnnxModelManager implements AutoCloseable {
     private final OrtEnvironment env;
     private OrtSession session;
-    private Map<Integer,String> id2label;
+    private String[] id2label;   // ← 배열로 변경
     private boolean expectsStringInput = false; // 문자열 입력 모델 여부
     private int seqLen = 64;                    // 정수 입력 모델일 때 길이
     private boolean hasAttentionMask = true;    // attention_mask 존재 여부
+    public int getSeqLen() { return seqLen; }
+    public void setSeqLen(int v) { this.seqLen = v; }            // <-- 추가
+    public boolean hasAttentionMask() { return hasAttentionMask; } // <-- 추가
+    public void setHasAttentionMask(boolean v) { this.hasAttentionMask = v; }
 
     public OnnxModelManager(Context ctx,
                             String onnxAssetName,
@@ -44,30 +48,76 @@ public class OnnxModelManager implements AutoCloseable {
         inspectInputs();
     }
 
+    // OnnxModelManager.java 내 유틸 추가
+    private static float[] softmax(float[] logits) {
+        double max = Double.NEGATIVE_INFINITY;
+        for (float v : logits) max = Math.max(max, v);
+        double sum = 0.0;
+        double[] exp = new double[logits.length];
+        for (int i = 0; i < logits.length; i++) { exp[i] = Math.exp(logits[i] - max); sum += exp[i]; }
+        float[] probs = new float[logits.length];
+        for (int i = 0; i < logits.length; i++) probs[i] = (float)(exp[i] / sum);
+        return probs;
+    }
+    private static float sigmoid(float x) { return (float)(1.0 / (1.0 + Math.exp(-x))); }
+
     private void inspectInputs() throws OrtException {
         Map<String, NodeInfo> inputs = session.getInputInfo();
+        // 1) 입력 타입/shape로 seqLen 추정
         for (NodeInfo ni : inputs.values()) {
             TensorInfo ti = (TensorInfo) ni.getInfo();
             if (ti.type == OnnxJavaType.STRING) {
                 expectsStringInput = true;
             } else if (ti.type == OnnxJavaType.INT32 || ti.type == OnnxJavaType.INT64) {
                 long[] shape = ti.getShape();
+                // ['batch','seq'] 같은 동적이면 shape[1]<=0 로 들어옴
                 if (shape.length >= 2 && shape[1] > 0) {
-                    seqLen = (int) shape[1]; // [1, seq_len]
+                    seqLen = (int) shape[1];                    // 고정 길이일 때만 갱신
                 }
             }
         }
-        hasAttentionMask = inputs.size() >= 2;
+        // 2) 이름 기반으로 attention_mask 유무 판별 (기존 size>=2 방식 보완)
+        boolean foundMask = false;
+        for (String name : inputs.keySet()) {
+            String n = name.toLowerCase();
+            if (n.contains("attention_mask") || n.endsWith("mask")) {
+                foundMask = true; break;
+            }
+        }
+        hasAttentionMask = foundMask; // 입력이 2개여도 이름이 mask가 아니면 false
     }
 
     private void loadLabelMap(Context ctx, String assetName) throws IOException {
         try (InputStream is = ctx.getAssets().open(assetName);
              InputStreamReader r = new InputStreamReader(is)) {
             JsonObject obj = JsonParser.parseReader(r).getAsJsonObject();
-            id2label = new HashMap<>();
-            for (Map.Entry<String, JsonElement> e : obj.entrySet()) {
-                id2label.put(Integer.parseInt(e.getKey()), e.getValue().getAsString());
-            }
+            // HashMap → 인덱스 배열로 변환
+            id2label = buildId2Label(obj);
+        }
+    }
+
+    // 새 헬퍼 추가 (클래스 내부 하단 아무 곳)
+    private static String[] buildId2Label(JsonObject m) {
+        int maxIdx = -1;
+        for (Map.Entry<String, JsonElement> e : m.entrySet()) {
+            int k = Integer.parseInt(e.getKey());
+            if (k > maxIdx) maxIdx = k;
+        }
+        String[] id2label = new String[maxIdx + 1];
+        for (Map.Entry<String, JsonElement> e : m.entrySet()) {
+            int idx = Integer.parseInt(e.getKey());
+            id2label[idx] = e.getValue().getAsString();
+        }
+        return id2label;
+    }
+
+    // 클래스 내부 아무 곳
+    private static float[] toProbs(float[] logits) {
+        if (logits.length == 1) {
+            float p1 = sigmoid(logits[0]);          // 바이너리-시그모이드
+            return new float[]{ 1.0f - p1, p1 };    // [normal, fraud]
+        } else {
+            return softmax(logits);                  // 다중 or 이진(2로짓) 공통
         }
     }
 
@@ -91,7 +141,8 @@ public class OnnxModelManager implements AutoCloseable {
         feeds.put(inputName, textTensor);
 
         try (OrtSession.Result result = session.run(feeds)) {
-            float[] probs = extractFirstRow(result);
+            float[] logits = extractFirstRow(result);   // ← logits 취득
+            float[] probs  = toProbs(logits);           // ← 확률로 정규화
             return toPrediction(probs);
         } finally {
             textTensor.close();
@@ -104,8 +155,6 @@ public class OnnxModelManager implements AutoCloseable {
         if (inputIds.length != seqLen) throw new IllegalArgumentException("seq_len mismatch");
 
         long[] shape = new long[]{1, seqLen};
-
-        // int[] → long[] 변환
         long[] ids64 = Arrays.stream(inputIds).asLongStream().toArray();
         long[][] ids2d = new long[1][seqLen];
         System.arraycopy(ids64, 0, ids2d[0], 0, seqLen);
@@ -128,7 +177,8 @@ public class OnnxModelManager implements AutoCloseable {
         }
 
         try (OrtSession.Result result = session.run(feeds)) {
-            float[] probs = extractFirstRow(result);
+            float[] logits = extractFirstRow(result);   // ← logits
+            float[] probs  = toProbs(logits);           // ← 확률
             return toPrediction(probs);
         } finally {
             idsTensor.close();
@@ -158,7 +208,8 @@ public class OnnxModelManager implements AutoCloseable {
         for (int i = 1; i < probs.length; i++) {
             if (probs[i] > best) { best = probs[i]; argmax = i; }
         }
-        String label = id2label.getOrDefault(argmax, "UNK");
+        String label = (id2label != null && argmax < id2label.length && id2label[argmax] != null)
+                ? id2label[argmax] : "UNK";
         return new Prediction(label, probs, argmax);
     }
 

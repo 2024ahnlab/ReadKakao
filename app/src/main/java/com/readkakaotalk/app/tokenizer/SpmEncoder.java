@@ -27,8 +27,8 @@ public class SpmEncoder {
 
         int pos = 0;
         // 필요 시 CLS/SEP id는 모델에 맞게 수정
-        final int CLS = 101;
-        final int SEP = 102;
+        final int CLS = 1;   // <s>
+        final int SEP = 2;   // </s>
 
         if (pos < maxLen) {
             ids[pos] = CLS;
